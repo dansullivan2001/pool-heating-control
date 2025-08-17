@@ -1,0 +1,32 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.sqlite3
+
+# ===== Config / Secrets =====
+config.py
+*.env
+secrets.json
+
+# ===== Logs =====
+*.log
+
+# ===== VS Code =====
+.vscode/
+
+# ===== macOS system files =====
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ===== Backup / temp files =====
+*.swp
+*.bak
+*.tmp
+
+# ===== Ignore virtual environments =====
+venv/
+env/
+.venv/

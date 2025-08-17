@@ -1,8 +1,8 @@
 __version__ = "1.0.0"
 
-import machine
-import onewire, ds18x20
-import time
+import machine #type: ignore
+import onewire, ds18x20 #type: ignore
+import time #type: ignore
 import ntptime
 import network
 from umqtt.simple import MQTTClient
@@ -58,6 +58,8 @@ first_boot = True
 
 # --- Soft reboot flag ---
 reboot_triggered = False
+reboot_confirmed = False
+
 
 # ==== Debounce params for level sensor ====
 LEVEL_SENSOR_PIN = 14
@@ -250,6 +252,11 @@ def message_callback(topic, msg):
         if msg_str == "1":
             print("Soft reboot requested via feed.")
             reboot_triggered = True
+            reboot_confirmed = False
+        elif msg_str == "0":
+            if reboot_triggered:
+                print("✅ OTA trigger feed reset confirmed!")
+                reboot_confirmed = True
 
 # --- MQTT setup ---            
 client.set_callback(message_callback)
@@ -384,16 +391,42 @@ while True:
             print("❌ Reconnect failed:", e)
             time.sleep(5)
 
-    if reboot_triggered:
+    if reboot_triggered and not reboot_confirmed:
         print("Turning off pump before soft reboot...")
         set_pump(False)
-        time.sleep(0.5)  # ensure pump off
-        reset_OTA_trigger_feed()
-        time.sleep(1)
-        log_debug("Soft rebooting")
-        time.sleep(1)
-        print("Soft rebooting now!")
-        machine.reset()
+        time.sleep(0.5)
+
+        try:
+            client.publish(AIO_FEED_OTA_TRIGGER, b"0")
+            print("Sent reset request to OTA trigger feed")
+        except Exception as e:
+            print("⚠️ Failed to reset OTA trigger feed:", e)
+
+        # wait until feed confirmed reset, with timeout
+        start_wait = time.time()
+        while not reboot_confirmed and time.time() - start_wait < 10:
+            try:
+                client.check_msg()  # process incoming MQTT messages
+            except OSError:
+                pass
+            time.sleep(0.5)
+
+        if reboot_confirmed:
+            log_debug("Soft rebooting")
+            time.sleep(1)
+            print("Soft rebooting now!")
+            machine.reset()
+        else:
+            print("⚠️ OTA feed reset not confirmed - skipping reboot for now")
+
+
+#        time.sleep(0.5)  # ensure pump off
+#       reset_OTA_trigger_feed()
+#        time.sleep(1)
+#        log_debug("Soft rebooting")
+#        time.sleep(1)
+#        print("Soft rebooting now!")
+#        machine.reset()
 
 
 

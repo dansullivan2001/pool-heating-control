@@ -15,6 +15,7 @@ secrets.json
 
 # ===== VS Code =====
 .vscode/
+.typings/
 
 # ===== macOS system files =====
 .DS_Store

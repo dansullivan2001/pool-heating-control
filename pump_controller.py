@@ -1,3 +1,4 @@
+print("DEBUG: pump_controller.py starting")
 __version__ = "1.0.0"
 
 import machine #type: ignore
@@ -384,40 +385,59 @@ while True:
         print("❌ MQTT error:", e)
         try:
             client.connect()
-            for feed in [AIO_FEED_PUMP_OVERRIDE, AIO_FEED_PUBLISH_INTERVAL, AIO_FEED_PUMP_INTERVAL, AIO_FEED_PUMP_DURATION]:
+            for feed in [AIO_FEED_PUMP_OVERRIDE, AIO_FEED_PUBLISH_INTERVAL, AIO_FEED_PUMP_INTERVAL, AIO_FEED_PUMP_DURATION, AIO_FEED_OTA_TRIGGER]:
                 client.subscribe(feed)
             print("🔄 Reconnected to MQTT")
+            log_debug("Reconnected to MQTT")
         except Exception as e:
             print("❌ Reconnect failed:", e)
             time.sleep(5)
 
+    if now - last_publish_time >= PUBLISH_INTERVAL:
+        log_debug("Main loop running")
+
+    # ==== Soft Reboot (compatible with main.py OTA) ====
     if reboot_triggered and not reboot_confirmed:
         print("Turning off pump before soft reboot...")
         set_pump(False)
         time.sleep(0.5)
 
-        try:
-            client.publish(AIO_FEED_OTA_TRIGGER, b"0")
-            print("Sent reset request to OTA trigger feed")
-        except Exception as e:
-            print("⚠️ Failed to reset OTA trigger feed:", e)
+        # Wait a few seconds to ensure everything is off
+        print("✅ Pump safely turned off, waiting to reboot...")
 
-        # wait until feed confirmed reset, with timeout
-        start_wait = time.time()
-        while not reboot_confirmed and time.time() - start_wait < 10:
-            try:
-                client.check_msg()  # process incoming MQTT messages
-            except OSError:
-                pass
-            time.sleep(0.5)
+        # Optional: brief delay to let MQTT messages propagate
+        time.sleep(2)
 
-        if reboot_confirmed:
-            log_debug("Soft rebooting")
-            time.sleep(1)
-            print("Soft rebooting now!")
-            machine.reset()
-        else:
-            print("⚠️ OTA feed reset not confirmed - skipping reboot for now")
+        print("Soft rebooting now!")
+        machine.reset()
+
+#     if reboot_triggered and not reboot_confirmed:
+#         print("Turning off pump before soft reboot...")
+#         set_pump(False)
+#         time.sleep(0.5)
+# 
+#         try:
+#             client.publish(AIO_FEED_OTA_TRIGGER, b"0")
+#             print("Sent reset request to OTA trigger feed")
+#         except Exception as e:
+#             print("⚠️ Failed to reset OTA trigger feed:", e)
+# 
+#         # wait until feed confirmed reset, with timeout
+#         start_wait = time.time()
+#         while not reboot_confirmed and time.time() - start_wait < 10:
+#             try:
+#                 client.check_msg()  # process incoming MQTT messages
+#             except OSError:
+#                 pass
+#             time.sleep(0.5)
+# 
+#         if reboot_confirmed:
+#             log_debug("Soft rebooting")
+#             time.sleep(1)
+#             print("Soft rebooting now!")
+#             machine.reset()
+#         else:
+#             print("⚠️ OTA feed reset not confirmed - skipping reboot for now")
 
 
 #        time.sleep(0.5)  # ensure pump off

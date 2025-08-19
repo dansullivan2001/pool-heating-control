@@ -1,5 +1,5 @@
 print("DEBUG: pump_controller.py starting")
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 import machine #type: ignore
 import onewire, ds18x20 #type: ignore

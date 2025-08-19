@@ -244,7 +244,7 @@ def connect_mqtt(max_attempts=3):
 
 # ==== Startup sequence ====
 if connect_wifi():
-#     sync_time()
+    sync_time()
 
 
     wlan = network.WLAN(network.STA_IF)

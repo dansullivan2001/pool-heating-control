@@ -1,4 +1,4 @@
-import network, time, os, machine, urequests
+import network, time, os, machine, urequests #type: ignore
 import config
 from umqtt.simple import MQTTClient
 

@@ -521,7 +521,7 @@ while True:
 
 
     if now - last_publish_time >= PUBLISH_INTERVAL:
-        log_debug("Main loop running")
+        log_debug("Updated Main loop running")
 
     # ==== Soft Reboot (compatible with main.py OTA) ====
     if reboot_triggered and not reboot_confirmed:

@@ -87,74 +87,193 @@ print("Found sensors:", [r.hex() for r in roms])
 relay = machine.Pin(16, machine.Pin.OUT)
 led = machine.Pin("LED", machine.Pin.OUT)
 
-def last_sunday(year, month):
-    """Return the date of the last Sunday of a given month/year."""
-    # Start from the last day of the month
-    for day in range(31, 0, -1):
+def sync_time(max_attempts=3):
+    """
+    Sync Pico RTC with NTP, applying UK DST offset.
+    Retries up to max_attempts if sync fails.
+    """
+    def uk_dst_offset(utc_tm):
+        """
+        Returns offset in seconds for UK DST.
+        utc_tm: tuple from time.localtime() in UTC
+        """
+        year = utc_tm[0]
+        # Last Sunday in March
+        march_last_sunday = max([d for d in range(31, 24, -1)
+                                 if time.localtime(time.mktime((year,3,d,2,0,0,0,0)))[6] == 6])
+        # Last Sunday in October
+        oct_last_sunday = max([d for d in range(31, 24, -1)
+                               if time.localtime(time.mktime((year,10,d,2,0,0,0,0)))[6] == 6])
+        month, mday = utc_tm[1], utc_tm[2]
+        # UTC+1 if in DST period
+        if (month > 3 and month < 10) or (month == 3 and mday >= march_last_sunday) or (month == 10 and mday < oct_last_sunday):
+            return 3600
+        return 0
+
+    for attempt in range(1, max_attempts+1):
         try:
-            tm = time.localtime(time.mktime((year, month, day, 0, 0, 0, 0, 0)))
-            if tm[6] == 6:  # Sunday
-                return day
-        except:
-            continue
-    return None
+            print(f"Syncing time with NTP (attempt {attempt})...")
+            ntptime.settime()  # sets RTC to UTC
+            utc_now = time.localtime()
 
-def uk_dst_offset(now=None):
-    """Return timezone offset in seconds for UK (GMT/BST)."""
-    if now is None:
-        now = time.localtime()
-    year = now[0]
+            offset = uk_dst_offset(utc_now)
+            local_epoch = time.mktime(utc_now) + offset
+            tm = time.localtime(local_epoch)
 
-    # DST starts last Sunday in March, 01:00 UTC
-    dst_start = (year, 3, last_sunday(year, 3), 1, 0, 0, 0, 0)
-    # DST ends last Sunday in October, 01:00 UTC
-    dst_end = (year, 10, last_sunday(year, 10), 1, 0, 0, 0, 0)
+            # Write corrected local time to RTC
+            machine.RTC().datetime((
+                tm[0], tm[1], tm[2], tm[6]+1, tm[3], tm[4], tm[5], 0
+            ))
 
-    now_epoch = time.mktime(now)
-    start_epoch = time.mktime(dst_start)
-    end_epoch = time.mktime(dst_end)
+            print("✅ NTP sync successful (local time):", time.localtime())
+            return True
 
-    if start_epoch <= now_epoch < end_epoch:
-        return 3600  # BST
+        except Exception as e:
+            print(f"⚠️ NTP sync failed (attempt {attempt}/{max_attempts}):", e)
+            time.sleep(1)
+
+    print("⚠️ Using Pico system time (unsynced)")
+    return False
+
+# 
+# def last_sunday(year, month):
+#     """Return the date of the last Sunday of a given month/year."""
+#     # Start from the last day of the month
+#     for day in range(31, 0, -1):
+#         try:
+#             tm = time.localtime(time.mktime((year, month, day, 0, 0, 0, 0, 0)))
+#             if tm[6] == 6:  # Sunday
+#                 return day
+#         except:
+#             continue
+#     return None
+# 
+# def uk_dst_offset(now=None):
+#     """Return timezone offset in seconds for UK (GMT/BST)."""
+#     if now is None:
+#         now = time.localtime()
+#     year = now[0]
+# 
+#     # DST starts last Sunday in March, 01:00 UTC
+#     dst_start = (year, 3, last_sunday(year, 3), 1, 0, 0, 0, 0)
+#     # DST ends last Sunday in October, 01:00 UTC
+#     dst_end = (year, 10, last_sunday(year, 10), 1, 0, 0, 0, 0)
+# 
+#     now_epoch = time.mktime(now)
+#     start_epoch = time.mktime(dst_start)
+#     end_epoch = time.mktime(dst_end)
+# 
+#     if start_epoch <= now_epoch < end_epoch:
+#         return 3600  # BST
+#     else:
+#         return 0  # GMT
+# 
+# def sync_time():
+#     try:
+#         print("Syncing time with NTP...")
+#         ntptime.settime()  # sets RTC to UTC
+#         utc_now = time.localtime()
+# 
+#         # Determine DST offset
+#         offset = uk_dst_offset(utc_now)
+# 
+#         # Apply offset
+#         local_epoch = time.mktime(utc_now) + offset
+#         tm = time.localtime(local_epoch)
+# 
+#         # Write corrected local time to RTC
+#         machine.RTC().datetime((
+#             tm[0], tm[1], tm[2], tm[6]+1, tm[3], tm[4], tm[5], 0
+#         ))
+# 
+#         print("NTP sync successful (local time):", time.localtime())
+#         return True
+#     except Exception as e:
+#         print("NTP sync failed:", e)
+#         return False
+#     
+
+
+# ==== Wi-Fi Connect with retries ====
+def connect_wifi(max_attempts=10):
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    if not wlan.isconnected():
+        print("Connecting to Wi-Fi...")
+        wlan.connect(SSID, PASSWORD)
+        attempts = 0
+        while not wlan.isconnected() and attempts < max_attempts:
+            time.sleep(1)
+            attempts += 1
+    if wlan.isconnected():
+        print("✅ Wi-Fi connected:", wlan.ifconfig())
+        time.sleep(2)  # allow network stack to settle
     else:
-        return 0  # GMT
-
-def sync_time():
-    try:
-        print("Syncing time with NTP...")
-        ntptime.settime()  # sets RTC to UTC
-        utc_now = time.localtime()
-
-        # Determine DST offset
-        offset = uk_dst_offset(utc_now)
-
-        # Apply offset
-        local_epoch = time.mktime(utc_now) + offset
-        tm = time.localtime(local_epoch)
-
-        # Write corrected local time to RTC
-        machine.RTC().datetime((
-            tm[0], tm[1], tm[2], tm[6]+1, tm[3], tm[4], tm[5], 0
-        ))
-
-        print("NTP sync successful (local time):", time.localtime())
-        return True
-    except Exception as e:
-        print("NTP sync failed:", e)
-        return False
+        print("⚠️ Wi-Fi connection failed after retries")
+    return wlan.isconnected()
 
 # ==== Wi-Fi connection ====
-wlan = network.WLAN(network.STA_IF)
-wlan.active(True)
-wlan.connect(SSID, PASSWORD)
-while not wlan.isconnected():
-    time.sleep(1)
-print("✅ Wi-Fi connected:", wlan.ifconfig())
+# wlan = network.WLAN(network.STA_IF)
+# wlan.active(True)
+# wlan.connect(SSID, PASSWORD)
+# while not wlan.isconnected():
+#     time.sleep(1)
+# print("✅ Wi-Fi connected:", wlan.ifconfig())
 
-sync_time()
+# sync_time()
+
+
+# ==== MQTT Connect with retries ====
+def connect_mqtt(max_attempts=3):
+    global client
+    client = MQTTClient("pico", "io.adafruit.com", user=AIO_USERNAME, password=AIO_KEY, port=1883)
+    for attempt in range(max_attempts):
+        try:
+            client.connect()
+            print("✅ MQTT connected")
+            return client
+        except OSError as e:
+            print(f"⚠️ MQTT connect failed (attempt {attempt+1}/{max_attempts}):", e)
+            time.sleep(2)
+    print("⚠️ MQTT connection failed, proceeding without it")
+    return None
 
 # ==== MQTT setup ====
-client = MQTTClient("pico", "io.adafruit.com", user=AIO_USERNAME, password=AIO_KEY, port=1883)
+# client = MQTTClient("pico", "io.adafruit.com", user=AIO_USERNAME, password=AIO_KEY, port=1883)
+
+
+# ==== Startup sequence ====
+if connect_wifi():
+#     sync_time()
+
+
+    wlan = network.WLAN(network.STA_IF)
+    print(wlan.ifconfig())
+
+import usocket as socket
+
+s = socket.socket()
+s.settimeout(5)  # 5-second timeout
+try:
+    s.connect(("1.1.1.1", 80))
+    print("Internet access: OK")
+except OSError as e:
+    print("Internet access failed:", e)
+finally:
+    s.close()
+
+
+import urequests
+
+try:
+    r = urequests.get("http://example.com")
+    print("Internet OK, status:", r.status_code)
+    r.close()
+except Exception as e:
+    print("Internet check failed:", e)
+    
+mqtt_client = connect_mqtt()
+
 
 def publish_pump_state(state):
     try:
@@ -376,7 +495,6 @@ def is_time_synced():
     return year >= 2023
 
 
-
 # ==== Main Loop ====
 while True:
     try:
@@ -392,6 +510,15 @@ while True:
         except Exception as e:
             print("❌ Reconnect failed:", e)
             time.sleep(5)
+
+    # Check time has synced
+    if not is_time_synced():
+        print("Waiting for NTP time sync")
+        continue
+
+
+    now = time.time()
+
 
     if now - last_publish_time >= PUBLISH_INTERVAL:
         log_debug("Main loop running")
@@ -487,13 +614,7 @@ while True:
         continue
     # ============================
     
-    # Check time has synced
-#    if not is_time_synced():
-#        print("Waiting for NTP time sync")
-#        continue
 
-
-    now = time.time()
 
     if override_active and now > override_end_time:
         override_active = False

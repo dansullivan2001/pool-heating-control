@@ -497,6 +497,7 @@ def is_time_synced():
 
 # ==== Main Loop ====
 while True:
+    log_debug("Main loop running")
     try:
         client.check_msg()
     except OSError as e:

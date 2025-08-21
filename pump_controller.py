@@ -497,7 +497,7 @@ def is_time_synced():
 
 # ==== Main Loop ====
 while True:
-    log_debug("Main loop running")
+    #log_debug("Main loop running")
     try:
         client.check_msg()
     except OSError as e:
@@ -527,6 +527,7 @@ while True:
     # ==== Soft Reboot (compatible with main.py OTA) ====
     if reboot_triggered and not reboot_confirmed:
         print("Turning off pump before soft reboot...")
+        log_debug("Turning off pump before soft reboot...")
         set_pump(False)
         time.sleep(0.5)
 
@@ -601,17 +602,20 @@ while True:
     if not water_present:
         if pump_on:
             print("⛔ Water level low, turning pump OFF immediately")
+            log_debug("Water level low, turning pump OFF immediately")
             set_pump(False)
         continue  # skip rest of loop
 
     if not safe_to_run_pump(temps):
         if pump_on:
             print("⛔ Thermal safety triggered, turning pump OFF")
+            log_debug("Thermal safety triggered, turning pump OFF")
             set_pump(False)
         continue
 
     if not sensors_ok_for_test(temps):
         print("⚠️ Required sensors missing, skipping all pump logic")
+        log_debug("Required sensors missing, skipping all pump logic")
         continue
     # ============================
     

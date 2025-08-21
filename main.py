@@ -1,7 +1,7 @@
 #import pump_controller
 print("hello world")
 
-import network, time, os, machine, urequests
+import network, time, os, machine, urequests #type: ignore
 from umqtt.simple import MQTTClient
 import config
 

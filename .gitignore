@@ -6,7 +6,7 @@ __pycache__/
 *.sqlite3
 
 # ===== Config / Secrets =====
-config.py
+secrets.py
 *.env
 secrets.json
 

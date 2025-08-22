@@ -43,7 +43,7 @@ SCENARIO = TempScenario()
 # ----------------------------
 # machine mocks (same as before, trimmed here)
 # ----------------------------
-class Pin:
+class MockPin:
     OUT = 0
     IN = 1
     PULL_UP = 2
@@ -74,12 +74,12 @@ class Timer:
 # ----------------------------
 # DS18B20 mock (uses SCENARIO)
 # ----------------------------
-class OneWire:
+class MockOneWire:
     def __init__(self, pin):
         print(f"[MOCK] OneWire bus on Pin {pin.pin}")
 
 
-class DS18X20:
+class MockDS18X20:
     def __init__(self, bus):
         print("[MOCK] DS18X20 initialized")
 

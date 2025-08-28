@@ -1,24 +1,42 @@
-from .wifi import WiFiManager
-from .mqtt import MQTTManager
-from .feeds import *
+# network.py
+__version__ = "0.0.1"
+
+import time
+from wifi import WiFiManager
+from mqtt import MqttManager
+from feeds import Feeds
+import secrets  # holds WIFI_SSID, WIFI_PASSWORD, AIO_USERNAME, AIO_KEY
+
 
 class Network:
-    def __init__ (self, wifi_ssid, wifi_password, aio_username, aio_key, feeds):
-        self.wifi = WiFiManager(wifi_ssid, wifi_password)
-        self.mqtt = MQTTManager(aio_username, aio_key, feeds, self.wifi)
+    """Handles combined WiFi + MQTT connectivity."""
+
+    def __init__(self):
+        # Setup feeds
+        self.feeds = Feeds(secrets.AIO_USERNAME)
+
+        # Setup WiFi manager
+        self.wifi = WiFiManager(secrets.WIFI_SSID, secrets.WIFI_PASSWORD)
+
+        # Setup MQTT manager
+        self.mqtt = MqttManager(
+            aio_username=secrets.AIO_USERNAME,
+            aio_key=secrets.AIO_KEY,
+            feeds=self.feeds,
+            wifi_manager=self.wifi
+        )
 
     def connect(self):
+        """Connect WiFi and MQTT."""
+        print("[Network] Connecting WiFi...")
         self.wifi.connect()
+        print("[Network] Connecting MQTT...")
         self.mqtt.connect()
 
     def loop(self):
-        # called from Main loop
-        if not self.wifi.is_connected():
-            print("Wifi down, disconnecting MQTT")
-            self.mqtt.disconnect()
-            self.wifi.connect()
-        self.mqtt.check_connection()
+        """Process WiFi + MQTT events, keep connection alive."""
+        # WiFi keepalive (could add reconnect logic here if needed)
+        self.wifi.loop()
 
-    def is_connected(self):
-        return self.wifi.is_connected() and self.mqtt.is_connected()
-    
+        # MQTT processing (subscriptions + rate-limited publishes)
+        self.mqtt.loop()

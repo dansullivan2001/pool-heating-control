@@ -1,5 +1,5 @@
 import time
-import mock_hardware as hw
+import mocks.mock_hardware as hw
 import pump_controller  # your real controller code
 
 # Test runner

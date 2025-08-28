@@ -8,9 +8,9 @@ from config import rom_to_label
 try:
     import machine, onewire, ds18x20
 except ImportError:
-    from mock_hardware import MockPin as Pin
-    from mock_hardware import MockOneWire as OneWire
-    from mock_hardware import MockDS18X20 as DS18X20
+    from mocks.mock_hardware import MockPin as Pin
+    from mocks.mock_hardware import MockOneWire as OneWire
+    from mocks.mock_hardware import MockDS18X20 as DS18X20
 
     class machine:
         Pin = Pin

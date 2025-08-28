@@ -2,7 +2,7 @@
 __version__ = "0.0.1"
 
 import threading, time
-import mock_hardware
+import mocks.mock_hardware as mock_hardware
 
 def poll():
     ds = mock_hardware.MockDS18X20(None)

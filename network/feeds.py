@@ -1,30 +1,34 @@
 # feeds.py
-__version__ = "0.0.2"
+__version__ = "0.3.0"
 
 class Feeds:
-    """Defines all Adafruit IO feed topics used in the project."""
+    def __init__(self, username):
+        # Define feeds in one place
+        self._feeds = {
+            "temperature": f"{username}/feeds/temperature",
+            "water_level": f"{username}/feeds/water-level",
+            "pump_state": f"{username}/feeds/pump-state",
+            "manual_override": f"{username}/feeds/manual-override",
+            "enclosure_temp": f"{username}/feeds/enclosure-temp",
+            "pump_test_interval": f"{username}/feeds/pump-test-interval",
+            "pump_test_duration": f"{username}/feeds/pump-test-duration",
+        }
 
-    _feed_names = {
-        # Control feeds
-        "pump_override": "pump-override",
-        "pump_interval": "pump-interval",
-        "pump_duration": "pump-duration",
-        "publish_interval": "publish-interval",
-        "ota_trigger": "ota-trigger",
+    def __getattr__(self, name):
+        """Allow dot access: feeds.temperature"""
+        if name in self._feeds:
+            return self._feeds[name]
+        raise AttributeError(f"No feed named {name}")
 
-        # Sensor feeds
-        "temp_flow": "temp-flow",
-        "temp_return": "temp-return",
-        "temp_ambient": "temp-ambient",
-        "temp_enclosure": "temp-enclosure",
-        "water_level": "water-level",
+    def all(self):
+        """Return dict of all feeds"""
+        return self._feeds.copy()
 
-        # State feeds
-        "pump_state": "pump-state",
-        "debug": "debug",
-    }
+    def keys(self):
+        return list(self._feeds.keys())
 
-    def __init__(self, aio_username):
-        self.base = aio_username
-        for attr, name in self._feed_names.items():
-            setattr(self, attr, f"{self.base}/feeds/{name}")
+    def values(self):
+        return list(self._feeds.values())
+
+    def items(self):
+        return self._feeds.items()

@@ -77,16 +77,26 @@ class MockWiFi:
     """Simulate WiFi connection state"""
     def __init__(self):
         self.connected = True   # start "online"
+        self.gui = None
 
     def connect(self, ssid=None, password=None):
         print("🔌 [MOCK] WiFi connecting...")
         self.connected = True
+        if self.gui:
+            self.gui.set_wifi_state(True)
         print("✅ [MOCK] WiFi connected")
         return True
 
     def disconnect(self):
         print("🔌 [MOCK] WiFi disconnected")
         self.connected = False
+        if self.gui:
+            self.gui.set_wifi_state(False)
 
     def is_connected(self):
+        if self.gui:
+            return self.gui.get_wifi_state()
         return self.connected
+    
+    # Alias to match WiFiManager expectation
+    isconnected = is_connected

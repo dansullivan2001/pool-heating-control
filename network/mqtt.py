@@ -1,143 +1,177 @@
 # mqtt.py
-__version__ = "0.0.1"
+__version__ = "0.3.0"
 
 import time
 import sys
-from collections import deque
+import queue
 
 try:
-    import umqtt.simple as mqtt  # MicroPython
+    from umqtt.simple import MQTTClient
+    BACKEND = "pico"
 except ImportError:
-    import paho.mqtt.client as mqtt  # Desktop testing
+    import paho.mqtt.client as paho
+    BACKEND = "desktop"
 
 
-WATCHDOG_TIMEOUT = 300   # 5 minutes
-QUEUE_MAXLEN = 50        # Max queued messages
-
-
-class MqttManager:
-    """Handles Adafruit IO MQTT connectivity with watchdog + queue."""
-
-    def __init__(self, aio_username, aio_key, feeds, wifi_manager=None):
+class MQTTManager:
+    def __init__(self, aio_username, aio_key, feeds, wifi_manager=None, client_id="pico-client", keepalive=60, watchdog_interval=60):
         self.aio_username = aio_username
         self.aio_key = aio_key
         self.feeds = feeds
-        self.wifi = wifi_manager
+        self.wifi_manager = wifi_manager
+        self.keepalive = keepalive
+        self.watchdog_interval = watchdog_interval
+        self.publish_interval = 10
+        self._last_publish = {} 
+
+        self.client_id = client_id
+        self.server = "io.adafruit.com"
+        self.port = 1883
+        self.user = aio_username
+        self.password = aio_key
 
         self.client = None
-        self.last_message_time = time.time()
-        self.last_connect_attempt = 0
+        self.queue = queue.Queue()        # fixed Queue import
         self.connected = False
+        self.last_ping = time.time()      # initialize watchdog timestamp
 
-        # Queue for offline publishing
-        self.queue = deque(maxlen=QUEUE_MAXLEN)
-
-        # Platform detection
-        self.is_micropython = "umqtt" in sys.modules
-
-    def connect(self):
-        """Connect to Adafruit IO MQTT broker."""
-        broker = "io.adafruit.com"
-        client_id = f"{self.aio_username}-client"
-
-        if self.is_micropython:
-            self.client = mqtt.MQTTClient(
-                client_id=client_id,
-                server=broker,
-                user=self.aio_username,
-                password=self.aio_key
-            )
-            self.client.set_callback(self._on_message)
-            self.client.connect()
+        # Initialize client depending on backend
+        if BACKEND == "pico":
+            self._init_pico_client()
         else:
-            # Desktop testing with paho-mqtt
-            self.client = mqtt.Client(client_id=client_id)
-            self.client.username_pw_set(self.aio_username, self.aio_key)
-            self.client.on_message = self._on_message
-            self.client.on_connect = self._on_connect
-            self.client.on_disconnect = self._on_disconnect
-            self.client.connect(broker, 1883, 60)
-            self.client.loop_start()
+            self._init_desktop_client()
 
-        self.connected = True
-        self.last_message_time = time.time()
-        print("[MQTT] Connected")
+    # -------------------------------------------------------------------------
+    # Private backend initializers
+    # -------------------------------------------------------------------------
+    def _init_pico_client(self):
+        self.client = MQTTClient(self.client_id, self.server, self.port, self.user, self.password, self.keepalive)
 
-    def _on_message(self, topic, msg=None):
-        print(f"[MQTT] Message on {topic}: {msg}")
-        self.last_message_time = time.time()
+    def _init_desktop_client(self):
+        # self.client = paho.Client(client_id=self.client_id, callback_api_version=1)
+        self.client = paho.Client(client_id=self.client_id)
+        if self.user and self.password:
+            self.client.username_pw_set(self.user, self.password)
+        self.client.on_connect = self._on_connect
+        self.client.on_disconnect = self._on_disconnect
 
-    def _on_connect(self, client, userdata, flags, rc):
-        print(f"[MQTT] Connected with rc={rc}")
-        self.connected = True
-        self.last_message_time = time.time()
 
-    def _on_disconnect(self, client, userdata, rc):
-        print(f"[MQTT] Disconnected rc={rc}")
+
+    # -------------------------------------------------------------------------
+    # Connection handling
+    # -------------------------------------------------------------------------
+    def connect(self):
+        if BACKEND == "pico":
+            try:
+                self.client.connect()
+                self.connected = True
+                print("✅ MQTT connected (pico)")
+            except Exception as e:
+                print(f"❌ MQTT connect failed: {e}")
+                self.connected = False
+        else:
+            try:
+                self.client.connect(self.server, self.port, self.keepalive)
+                self.client.loop_start()
+                self.connected = True
+                print("✅ MQTT connected (desktop)")
+            except Exception as e:
+                print(f"❌ MQTT connect failed: {e}")
+                self.connected = False
+        return self.connected
+
+    def disconnect(self):
+        if BACKEND == "pico":
+            self.client.disconnect()
+        else:
+            self.client.loop_stop()
+            self.client.disconnect()
         self.connected = False
+        print("🔌 MQTT disconnected")
 
-    def publish(self, feed, value):
-        """Publish a message, or queue if disconnected."""
-        payload = str(value)
-        topic = feed
+    # -------------------------------------------------------------------------
+    # Publish with queue + watchdog
+    # -------------------------------------------------------------------------
+    def publish(self, topic, msg):
+        now = time.time()
+        last = self._last_publish.get(topic, 0)
+        if now - last < self.publish_interval:
+            print(f"⏳ MQTT rate limit, skipping publish to {topic}")
+            return
+        
+        if not isinstance(msg, (str, bytes)):
+            msg = str(msg)
 
         if self.connected:
             try:
-                if self.is_micropython:
-                    self.client.publish(topic, payload)
+                if BACKEND == "pico":
+                    self.client.publish(topic, msg)
                 else:
-                    self.client.publish(topic, payload)
-                self.last_message_time = time.time()
-                return True
+                    self.client.publish(topic, msg)
+                self._last_publish[topic] = now
+                self.last_ping = time.time()
+                print(f"📤 MQTT publish {topic}: {msg}")
             except Exception as e:
-                print(f"[MQTT] Publish error: {e}")
+                print(f"⚠️ MQTT publish failed, queued: {e}")
+                self.queue.put((topic, msg))
                 self.connected = False
+        else:
+            print("📥 MQTT offline, queued:", topic, msg)
+            self.queue.put((topic, msg))
 
-        # If here → queue the message
-        self.queue.append((topic, payload))
-        print(f"[MQTT] Queued message: {topic}={payload}")
-        return False
+    def flush_queue(self):
+        if self.connected:
+            while not self.queue.empty():
+                topic, msg = self.queue.get()
+                try:
+                    self.client.publish(topic, msg)
+                    print(f"📤 MQTT flush {topic}: {msg}")
+                except Exception as e:
+                    print(f"⚠️ MQTT flush failed: {e}")
+                    self.queue.put((topic, msg))
+                    break  # stop, keep remaining messages
+
+
+    def watchdog(self):
+        """Non-blocking watchdog for MQTT connection health."""
+        now = time.time()
+        if now - self.last_ping > self.watchdog_interval:
+            print("🐶 MQTT watchdog triggered - reconnecting")
+            self.disconnect()
+            self.connect()
+            self.flush_queue()
+
+    # -------------------------------------------------------------------------
+    # Desktop callbacks
+    # -------------------------------------------------------------------------
+    def _on_connect(self, client, userdata, flags, rc):
+        if rc == 0:
+            self.connected = True
+            print("✅ MQTT desktop connected")
+        else:
+            print("❌ MQTT desktop failed with rc=", rc)
+
+    def _on_disconnect(self, client, userdata, rc):
+        self.connected = False
+        print("🔌 MQTT desktop disconnected rc=", rc)
+
+    def check_connection(self):
+        if self.wifi_manager.is_connected() and not self.client.is_connected():
+            print("[MQTT] WiFi restored, reconnecting MQTT...")
+            self.connect()  # reconnect client
+
 
     def loop(self):
-        """Non-blocking keepalive, process queue, run watchdog."""
-        now = time.time()
-
-        if self.is_micropython:
-            try:
-                self.client.check_msg()
-            except Exception:
-                self.connected = False
-
-        # Try reconnect if not connected
-        if not self.connected and (now - self.last_connect_attempt > 10):
-            self.last_connect_attempt = now
-            try:
-                print("[MQTT] Attempting reconnect...")
+        if BACKEND == "desktop" and self.connected:
+            self.client.loop(timeout=0.1)  # non-blocking
+            # Check connection even if desktop client thinks it's connected
+            if self.wifi_manager and self.wifi_manager.is_connected() and not self.connected:
+                print("[MQTT] WiFi restored, reconnecting MQTT...")
                 self.connect()
-            except Exception as e:
-                print(f"[MQTT] Reconnect failed: {e}")
-                self.connected = False
-
-        # Flush queue if connected
-        if self.connected and self.queue:
-            topic, payload = self.queue.popleft()
-            try:
-                if self.is_micropython:
-                    self.client.publish(topic, payload)
-                else:
-                    self.client.publish(topic, payload)
-                print(f"[MQTT] Flushed queued: {topic}={payload}")
-                self.last_message_time = now
-            except Exception as e:
-                print(f"[MQTT] Flush failed: {e}")
-                self.queue.appendleft((topic, payload))
-                self.connected = False
-
-        # Watchdog → soft reset after timeout
-        if now - self.last_message_time > WATCHDOG_TIMEOUT:
-            print("[MQTT] Watchdog triggered: rebooting...")
-            if self.is_micropython:
-                import machine
-                machine.reset()
-            else:
-                sys.exit(1)  # For Mac testing
+                self.flush_queue()
+        if BACKEND == "pico":
+            self.flush_queue()
+            if self.wifi_manager and self.wifi_manager.is_connected() and not self.connected:
+                print("[MQTT] WiFi restored, reconnecting MQTT (pico)...")
+                self.connect()
+                self.flush_queue()

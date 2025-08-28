@@ -13,7 +13,7 @@ class MockHardwareGUI:
         # ---------- Variables ----------
         self.temp_vars = {rom: tk.DoubleVar(value=20.0) for rom in rom_to_label}
         self.level_var = tk.BooleanVar(value=True)
-        self.wifi_state = tk.BooleanVar(value=True)
+        self.wifi_var = tk.BooleanVar(value=True)
         self.pump_state = tk.StringVar(value="OFF")
         self.use_fake_roms = tk.BooleanVar(value=False)
         self.fake_roms = []  # set externally if needed
@@ -48,8 +48,8 @@ class MockHardwareGUI:
         self.water_checkbox.grid(row=1, column=0, sticky="w", padx=10, pady=5)
 
         # WiFi checkbox
-        self.wifi_state = tk.Checkbutton(root, text="WiFi Connected", variable=self.wifi_state, command=self._update_wifi)
-        self.wifi_state.grid(row=3, column=0, sticky="w", padx=10, pady=5)
+        self.wifi_checkbox = tk.Checkbutton(root, text="WiFi Connected", variable=self.wifi_var, command=self._update_wifi)
+        self.wifi_checkbox.grid(row=3, column=0, sticky="w", padx=10, pady=5)
 
         # Fake ROMs checkbox
         self.fake_roms_checkbox = tk.Checkbutton(root, text="Use Fake ROMs", variable=self.use_fake_roms)
@@ -77,13 +77,16 @@ class MockHardwareGUI:
         print("Pump state set to:", "ON" if on else "OFF")
 
     def _update_wifi(self):
-        if self.wifi_state.get():
-            mock_wifi.connect()
+        if self.wifi_var.get():
+            self.wifi.connect()
         else:
-            mock_wifi.disconnect()
+            self.wifi.disconnect()
 
     def wifi_connected(self):
-        return self.wifi_state.get()
+        return self.wifi_var.get()
+    
+    def get_wifi_state(self):
+        return self.wifi_var.get()
 
     # check this with ChatGPT
     def override(self):

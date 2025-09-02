@@ -4,6 +4,7 @@ __version__ = "0.3.0"
 import time
 import sys
 import queue
+from state import state
 
 try:
     from umqtt.simple import MQTTClient
@@ -65,28 +66,39 @@ class MQTTManager:
             try:
                 self.client.connect()
                 self.connected = True
+                state['mqtt_connected'] = True
                 print("✅ MQTT connected (pico)")
             except Exception as e:
                 print(f"❌ MQTT connect failed: {e}")
                 self.connected = False
+                state['mqtt_connected'] = False
         else:
             try:
                 self.client.connect(self.server, self.port, self.keepalive)
                 self.client.loop_start()
                 self.connected = True
+                state['mqtt_connected'] = True
                 print("✅ MQTT connected (desktop)")
             except Exception as e:
                 print(f"❌ MQTT connect failed: {e}")
                 self.connected = False
+                state['mqtt_connected'] = False
         return self.connected
 
     def disconnect(self):
         if BACKEND == "pico":
-            self.client.disconnect()
+            try:
+                self.client.disconnect()
+            except Exception:
+                pass
         else:
-            self.client.loop_stop()
-            self.client.disconnect()
+            try:
+                self.client.loop_stop()
+                self.client.disconnect()
+            except Exception:
+                pass
         self.connected = False
+        state['mqtt_connected'] = False
         print("🔌 MQTT disconnected")
 
     # -------------------------------------------------------------------------
@@ -147,12 +159,16 @@ class MQTTManager:
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             self.connected = True
+            state['mqtt_connected'] = True
             print("✅ MQTT desktop connected")
         else:
+            self.connected = False
+            state['mqtt_connected'] = False
             print("❌ MQTT desktop failed with rc=", rc)
 
     def _on_disconnect(self, client, userdata, rc):
         self.connected = False
+        state['mqtt_connected'] = False
         print("🔌 MQTT desktop disconnected rc=", rc)
 
     def check_connection(self):

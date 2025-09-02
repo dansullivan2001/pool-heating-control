@@ -1,6 +1,7 @@
 # sensors/temperature.py
 __version__ = "0.0.1"
 
+from state import state
 import time
 from config import rom_to_label
 
@@ -23,11 +24,22 @@ class TemperatureSensor:
         time.sleep(0.1)
  #       return {rom_to_label.get(rom, rom) : self.ds_sensor.read_temp(rom) for rom in self.roms}
         readings = {}
+        disconnected = []
         for rom in self.ds_sensor.roms:
             label = rom_to_label.get(rom)
             if label is None:
                 # ROM not recognized
                 print(f"⚠️ Warning: Unknown ROM {rom} detected!")
                 label = rom  # fallback so we still return something
-            readings[label] = self.ds_sensor.read_temp(rom)
+                disconnected.append(rom)
+            temp = self.ds_sensor.read_temp(rom)
+            if temp is None:
+                disconnected.append(rom)
+            readings[label] = temp
+
+        # Update shared state for LED
+        state['temps'].update(readings)
+        state['disconnected_sensors'] = disconnected
+        state['sensors_ok'] = len(disconnected) == 0
+
         return readings

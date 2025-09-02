@@ -1,6 +1,7 @@
 # mock_hardware_gui.py
 __version__ = "0.0.1"
 from config import rom_to_label
+from state import state
 
 class MockHardwareGUI:
     def __init__(self, root=None):
@@ -14,10 +15,13 @@ class MockHardwareGUI:
         self.temp_vars = {rom: tk.DoubleVar(value=20.0) for rom in rom_to_label}
         self.level_var = tk.BooleanVar(value=True)
         self.wifi_var = tk.BooleanVar(value=True)
+        self.button_var = tk.BooleanVar(value=False)
         self.pump_state = tk.StringVar(value="OFF")
         self.use_fake_roms = tk.BooleanVar(value=False)
         self.fake_roms = []  # set externally if needed
         self.disable_sensors = {rom: tk.BooleanVar(value=False) for rom in rom_to_label}
+        self.led_state = tk.BooleanVar(value=False)  # False = off, True = on
+
 
         # ---------- Widgets ----------
         self.labels = {}
@@ -61,8 +65,19 @@ class MockHardwareGUI:
         self.pump_label = tk.Label(root, textvariable=self.pump_state, fg="red")
         self.pump_label.grid(row=2, column=1, sticky="w", padx=10, pady=5)
 
+        # LED indicator
+        self.led_label_text = tk.Label(root, text="Status LED:")
+        self.led_label_text.grid(row=4, column=0, sticky="w", padx=10, pady=5)
+        # LED indicator as a colored circle
+        self.led_canvas = tk.Canvas(root, width=20, height=20, highlightthickness=1, highlightbackground="black")
+        self.led_canvas.grid(row=4, column=1, sticky="w", padx=10, pady=5)
+        # draw the circle
+        self.led_circle = self.led_canvas.create_oval(2, 2, 18, 18, fill="grey")
+
+
+
         # Override Button
-        self.button = tk.Button(root, text="Override Pump")
+        self.button = tk.Checkbutton(root, text="Manual Override", variable=self.button_var)
         self.button.grid(row=3, column=0, columnspan=2, pady=10)  
 
     # ---------- Methods ----------
@@ -89,5 +104,11 @@ class MockHardwareGUI:
         return self.wifi_var.get()
 
     # check this with ChatGPT
-    def override(self):
-        return self.button.invoke()
+    def button_pressed(self):
+        return self.button_var.get()
+
+    def set_led_state(self, on: bool):
+        color = "green" if on else "grey"  # green = LED on, grey = off
+        self.led_canvas.itemconfig(self.led_circle, fill=color)
+        print("LED state:", "ON" if on else "OFF")
+

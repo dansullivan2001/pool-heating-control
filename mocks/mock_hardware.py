@@ -16,7 +16,7 @@ class MockPin:
     OUT = "out"
     IN = "in"
 
-    def __init__(self, pin, mode=IN, gui=None):
+    def __init__(self, pin, mode=IN, *args, gui=None, **kwargs):
         self.pin = pin
         self.mode = mode
         self._value = 0
@@ -29,11 +29,15 @@ class MockPin:
         if v is None:
             if self.pin == "water_level" and self.gui:
                 return 1 if self.gui.water_present() else 0
+            if self.pin == "button" and self.gui:
+                return 0 if self.gui.button_pressed() else 1
             return self._value
         else:
             self._value = v
             if self.mode == MockPin.OUT and self.pin == "pump" and self.gui:
                 gui.set_pump_state(bool(v))
+            elif self.mode == MockPin.OUT and self.pin == "led" and self.gui:
+                self.gui.set_led_state(bool(v))
 
 class MockOneWire:
     def __init__(self, pin):

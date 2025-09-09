@@ -1,9 +1,16 @@
 # config.py
 __version__ = "0.0.1"
 
-PUMP_TEST_INTERVAL = 3600
-PUMP_TEST_DURATION = 30
-MAX_ENCLOSURE_TEMP = 50
+CONFIG = {
+    "pump_test_interval": 60,
+    "pump_test_duration": 30,
+    "max_enclosure_temp": 50,
+    "ota_check_interval": 3600,
+    "min_temp_delta": 0,
+    "publish_interval": 30,
+    "manual_override_duration": 10,
+    "mqtt_watchdog_interval": 10,
+}
 
 # GPIO pins
 PIN_PUMP = 5
@@ -11,8 +18,6 @@ PIN_LED = 6
 PIN_WATER_LEVEL = 14
 PIN_BUTTON = 10
 PIN_TEMPS = 0
-
-OTA_CHECK_INTERVAL = 3600
 
 
 # ==== Sensor labels ====

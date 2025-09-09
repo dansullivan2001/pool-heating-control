@@ -5,13 +5,20 @@ class Feeds:
     def __init__(self, username):
         # Define feeds in one place
         self._feeds = {
-            "temperature": f"{username}/feeds/temperature",
-            "water_level": f"{username}/feeds/water-level",
-            "pump_state": f"{username}/feeds/pump-state",
-            "manual_override": f"{username}/feeds/manual-override",
-            "enclosure_temp": f"{username}/feeds/enclosure-temp",
-            "pump_test_interval": f"{username}/feeds/pump-test-interval",
-            "pump_test_duration": f"{username}/feeds/pump-test-duration",
+            "debug": f"{username}/feeds/debug",
+            "ota_trigger": f"{username}/feeds/ota_trigger",
+            "manual_override": f"{username}/feeds/pump_override",
+            "pump_state": f"{username}/feeds/pump_state",
+            "ambient_temp": f"{username}/feeds/tAmbient",
+            "enclosure_temp": f"{username}/feeds/tEnclosure",
+            "flow_temp": f"{username}/feeds/tFlow",
+            "return_temp": f"{username}/feeds/tReturn",
+  #          "water_level": f"{username}/feeds/water-level",
+
+            
+   #         "pump_test_interval": f"{username}/feeds/pump_test_interval",
+    #        "pump_test_duration": f"{username}/feeds/pump-test-duration",
+
         }
 
     def __getattr__(self, name):

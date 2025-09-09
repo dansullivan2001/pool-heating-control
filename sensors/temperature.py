@@ -43,3 +43,12 @@ class TemperatureSensor:
         state['sensors_ok'] = len(disconnected) == 0
 
         return readings
+    
+    def read_all(self):
+        """Return a dict of {label: temperature} for all sensors."""
+        temps = {}
+        for rom in self.ds_sensor.scan():
+            label = rom_to_label.get(rom, rom)
+            temp = self.ds_sensor.read_temp(rom)
+            temps[label] = temp
+        return temps

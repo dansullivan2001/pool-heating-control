@@ -38,7 +38,7 @@ class MockHardwareGUI:
             lbl.grid(row=idx, column=0, sticky="w", padx=5, pady=2)
             self.labels[rom] = lbl
 
-            sld = tk.Scale(temp_frame, from_=0, to=50, orient="horizontal",
+            sld = tk.Scale(temp_frame, from_=0, to=55, orient="horizontal",
                            resolution=0.1, variable=self.temp_vars[rom], length=200)
             sld.grid(row=idx, column=1, padx=5, pady=2)
             self.sliders[rom] = sld
@@ -80,6 +80,15 @@ class MockHardwareGUI:
         self.button = tk.Checkbutton(root, text="Manual Override", variable=self.button_var)
         self.button.grid(row=3, column=0, columnspan=2, pady=10)  
 
+        # --- State viewer ---
+        self.state_text = tk.Text(root, height=15, width=50)
+        self.state_text.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
+
+        # --- Time to next test ---
+        self.next_test_var = tk.StringVar(value="Next test: --:--")
+        self.next_test_label = tk.Label(root, textvariable=self.next_test_var)
+        self.next_test_label.grid(row=6, column=0, columnspan=2, pady=5)
+
     # ---------- Methods ----------
     def get_temperature(self, sensor_rom):
         return self.temp_vars[sensor_rom].get()
@@ -87,9 +96,13 @@ class MockHardwareGUI:
     def water_present(self):
         return self.level_var.get()
 
-    def set_pump_state(self, on: bool):
-        self.pump_state.set("ON" if on else "OFF")
-        print("Pump state set to:", "ON" if on else "OFF")
+    def set_pump_state(self, on: bool, reason=""):
+        text = "ON" if on else "OFF"
+        if reason:
+            text += f" ({reason})"
+        self.pump_state.set(text)
+        print("Pump state set to:", text)
+
 
     def _update_wifi(self):
         if self.wifi_var.get():
@@ -112,3 +125,46 @@ class MockHardwareGUI:
         self.led_canvas.itemconfig(self.led_circle, fill=color)
         print("LED state:", "ON" if on else "OFF")
 
+    def bind_state(self, state):
+        """Give GUI access to the shared controller state dict"""
+        self.state = state
+
+    def update_from_state(self):
+        """Refresh GUI widgets based on controller state"""
+        if not hasattr(self, "state"):
+            return
+
+        # Pump
+        pump_on = self.state.get("pump_on", False)
+        reason = self.state.get("pump_reason", "")
+        self.set_pump_state(pump_on, reason)
+
+        # LED
+        #self.set_led_state(self.state.get("led_on", False))
+
+        # Override
+        self.button_var.set(self.state.get("override", False))
+
+        # Temps
+        temps = self.state.get("temps", {})
+        for rom, label in rom_to_label.items():
+            if rom in temps and self.labels.get(rom):
+                value = temps[rom]
+                if value is not None:
+                    self.labels[rom].config(text=f"{label}: {value:.1f} °C", fg="black")
+                else:
+                    self.labels[rom].config(text=f"{label}: ERROR", fg="red")
+
+        t_next = self.state.get("time_to_next_test", None)
+        if t_next is not None:
+            mins, secs = divmod(int(t_next), 60)
+            self.next_test_var.set(f"Next test: {mins:02d}:{secs:02d}")
+
+        # --- State dump ---
+        self.state_text.delete("1.0", "end")
+        for k, v in self.state.items():
+            self.state_text.insert("end", f"{k}: {v}\n")
+
+    def set_wifi_state(self, connected: bool):
+        """Update the WiFi checkbox from the mock WiFi object"""
+        self.wifi_var.set(connected)

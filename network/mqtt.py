@@ -15,7 +15,7 @@ except ImportError:
 
 
 class MQTTManager:
-    def __init__(self, aio_username, aio_key, feeds, wifi_manager=None, client_id="pico-client", keepalive=60, watchdog_interval=60):
+    def __init__(self, aio_username, aio_key, feeds, wifi_manager=None, client_id="pico-client", keepalive=60, watchdog_interval=10, restart_callback=None):
         self.aio_username = aio_username
         self.aio_key = aio_key
         self.feeds = feeds
@@ -24,6 +24,7 @@ class MQTTManager:
         self.watchdog_interval = watchdog_interval
         self.publish_interval = 10
         self._last_publish = {} 
+        self.restart_callback = restart_callback or (lambda: None)  # default to exit
 
         self.client_id = client_id
         self.server = "io.adafruit.com"
@@ -143,15 +144,26 @@ class MQTTManager:
                     self.queue.put((topic, msg))
                     break  # stop, keep remaining messages
 
-
+    # --- Watchdog ---
     def watchdog(self):
-        """Non-blocking watchdog for MQTT connection health."""
         now = time.time()
-        if now - self.last_ping > self.watchdog_interval:
-            print("🐶 MQTT watchdog triggered - reconnecting")
-            self.disconnect()
+
+        # If MQTT stale or disconnected but WiFi is connected
+        if self.wifi_manager and self.wifi_manager.is_connected() and not self.connected:
+            print("🐶 MQTT watchdog: WiFi up, reconnecting MQTT...")
             self.connect()
             self.flush_queue()
+            #if self.connected:
+            self.last_ping = now
+
+        # If MQTT stays disconnected too long, trigger “restart”
+        if now - self.last_ping > self.watchdog_interval * 1 and not self.connected:  # e.g., 3x interval
+            print("⚠️ MQTT unresponsive, triggering Pico restart")
+            if self.restart_callback:
+                if hasattr(self, "pre_restart_hook"):
+                    self.pre_restart_hook()
+                self.restart_callback()
+            self.last_ping = now
 
     # -------------------------------------------------------------------------
     # Desktop callbacks

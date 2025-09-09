@@ -8,6 +8,7 @@ state = {
     "manual_override": False,     # set via Adafruit IO or local button
     "last_pump_run": None,        # timestamp of last test run
     "test_running": False,        # true when periodic test is active
+    "pump_reason": "",            # reason for last pump state change
 
     # --- Sensors ---
     "temps": {},                  # dict of label -> temperature (C)

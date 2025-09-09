@@ -54,6 +54,7 @@ class WiFiManager:
 
     def is_connected(self):
         return getattr(self.wlan, "isconnected", lambda: False)()
+  
 
     def disconnect(self):
         try:
@@ -68,3 +69,6 @@ class WiFiManager:
         if not self.is_connected():
             print("🔄 WiFi dropped, reconnecting...")
             self.connect()
+
+
+

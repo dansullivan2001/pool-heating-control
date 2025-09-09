@@ -11,7 +11,8 @@ from network import Network
 from mocks.mock_hardware_gui import MockHardwareGUI
 from mocks.mock_hardware import MockDS18X20, MockOneWire, MockPin
 from mocks import mock_hardware
-from config import PIN_TEMPS, PIN_WATER_LEVEL, rom_to_label
+from controller.controller import Controller
+from config import PIN_TEMPS, PIN_WATER_LEVEL, rom_to_label, CONFIG
 
 # ---------- Setup GUI ----------
 root = tk.Tk()
@@ -76,6 +77,24 @@ gui.wifi = network.wifi
 network.wifi.wlan.gui = gui
 network.connect()                   # connect WiFi + MQTT
 
+# --- Initialize controller ---
+controller = Controller(
+    sensors={
+        "temperature": temperature_sensor,
+        "water_level": water_level_sensor,
+        "button": gui,  # gui.button_pressed() implements button interface
+    },
+    network=network,
+    config={
+        "pump_test_interval": CONFIG["pump_test_interval"],
+        "min_temp_delta": 2.0,
+        "max_enclosure_temp": CONFIG["max_enclosure_temp"],
+        "publish_interval": 30,
+    }
+)
+
+gui.bind_state(controller.state)
+
 # ---------- Update loop ----------
 def update_loop():
 
@@ -102,6 +121,7 @@ def update_loop():
         temps[rom] = temp
 
     level = water_level_sensor.read()
+
 
     # --- Update GUI + publish MQTT ---
     print("\nSensor readings:")
@@ -146,6 +166,16 @@ def update_loop():
     # Optional: simulate critical error manually
     # state['critical_error'] = True
 
+
+
+    controller.state["temps"] = temps
+    controller.state["water_level"] = level
+
+    # Run one controller cycle
+    controller.loop()
+
+    # Update GUI from controller state
+    gui.update_from_state()
 
     # repeat every 500 ms
     root.after(500, update_loop)

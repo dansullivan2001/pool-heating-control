@@ -1,4 +1,4 @@
-# wifi.py
+# network/wifi.py
 __version__ = "0.3.0"
 
 import time

@@ -1,4 +1,4 @@
-# feeds.py
+# network/feeds.py
 __version__ = "0.3.0"
 
 class Feeds:

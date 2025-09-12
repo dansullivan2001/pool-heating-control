@@ -1,7 +1,8 @@
 # controller/controller.py
-__version__ = "0.3.0"
+__version__ = "0.4.0"   
 
 import time
+from network import mqtt
 from state import state
 
 class Controller:
@@ -10,9 +11,11 @@ class Controller:
         Controller handles pump logic, MQTT publishing, and safety checks.
         """
         self.network = network
+        self.network.mqtt.message_handler = self.handle_mqtt_message  # set the handler
         self.sensors = sensors or {}
         self.state = state  # shared global state
         self.config = config
+        self.mqtt = network.mqtt
 
         # timing
         self._last_publish = 0
@@ -110,31 +113,35 @@ class Controller:
         if not self.network or not self.network.mqtt.connected:
             return
 
-        aio = self.network.mqtt.aio_username
-        mqtt = self.network.mqtt
+        feeds = self.network.feeds
 
-        # --- Pump state + reason
-  #      mqtt.publish(f"{aio}/feeds/pump_on", int(self.state["pump_on"]))
-  #      mqtt.publish(f"{aio}/feeds/pump_reason", str(self.state.get("pump_reason", "")))
-        mqtt.publish(f"{aio}/feeds/pump_override", int(self.state["manual_override"]))
+        # --- Basic states ---
+
+        self.mqtt.publish(feeds.manual_override, int(self.state["manual_override"]))
+        self.mqtt.publish(feeds.pump_state, int(self.state["pump_on"]))
+        self.mqtt.publish(feeds.ota_trigger, "0")  # reset OTA trigger after use
 
         # --- Sensor values
         for label, value in self.state["temps"].items():
             if value is not None:
-                mqtt.publish(f"{aio}/feeds/{label}", value)
+                topic = getattr(feeds, label, None)
+                if topic:
+                    self.mqtt.publish(topic, value)
 
-  #      mqtt.publish(f"{aio}/feeds/water_level", int(self.state["water_level_ok"]))
-
-        # --- Diagnostics
-   #     mqtt.publish(f"{aio}/feeds/sensors_ok", int(self.state["sensors_ok"]))
-   #     if self.state["last_error"]:
-   #         mqtt.publish(f"{aio}/feeds/last_error", str(self.state["last_error"]))
-
+        # --- Full state dump for debugging ---
         import json
-
         # Convert the full state dict to a JSON string
         state_json = json.dumps(self.state, indent=2)
-
         # Publish to a debug feed
-        mqtt.publish(f"{aio}/feeds/debug", state_json)
+        self.mqtt.publish(feeds.debug, state_json)
 
+    def handle_mqtt_message(self, topic, payload):
+        feeds = self.network.feeds
+        if topic == feeds.manual_override:
+            state["manual_override"] = payload == "1"
+            state["pump_reason"] = (
+                "Manual override (AIO)" if state["manual_override"] else "Manual override released"
+            )
+        elif topic == feeds.ota_trigger and payload == "1":
+            state["ota_pending"] = True
+            state["pump_reason"] = "OTA update triggered"

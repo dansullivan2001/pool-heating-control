@@ -1,5 +1,5 @@
 # network.py
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 import time
 from .wifi import WiFiManager
@@ -30,7 +30,8 @@ class Network:
             feeds=self.feeds,
             wifi_manager=self.wifi,
             watchdog_interval=CONFIG.get("mqtt_watchdog_interval", 60),
-            restart_callback=self.restart_system  # we'll add this
+            restart_callback=self.restart_system,  # we'll add this
+            message_handler=None  # will be set later by controller
         )
 
     def connect(self):

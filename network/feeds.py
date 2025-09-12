@@ -1,5 +1,5 @@
 # network/feeds.py
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 class Feeds:
     def __init__(self, username):
@@ -9,10 +9,10 @@ class Feeds:
             "ota_trigger": f"{username}/feeds/ota_trigger",
             "manual_override": f"{username}/feeds/pump_override",
             "pump_state": f"{username}/feeds/pump_state",
-            "ambient_temp": f"{username}/feeds/tAmbient",
-            "enclosure_temp": f"{username}/feeds/tEnclosure",
-            "flow_temp": f"{username}/feeds/tFlow",
-            "return_temp": f"{username}/feeds/tReturn",
+            "tAmbient": f"{username}/feeds/tAmbient",
+            "tEnclosure": f"{username}/feeds/tEnclosure",
+            "tFlow": f"{username}/feeds/tFlow",
+            "tReturn": f"{username}/feeds/tReturn",
   #          "water_level": f"{username}/feeds/water-level",
 
             

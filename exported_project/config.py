@@ -2,18 +2,14 @@
 __version__ = "0.0.1"
 
 CONFIG = {
-    "pump_test_interval": 600,
-    "pump_test_duration": 90,
-    "max_enclosure_temp": 55,
+    "pump_test_interval": 60,
+    "pump_test_duration": 30,
+    "max_enclosure_temp": 50,
     "ota_check_interval": 3600,
     "min_temp_delta": 0,
     "publish_interval": 30,
-    "manual_override_duration": 90,
+    "manual_override_duration": 10,
     "mqtt_watchdog_interval": 10,
-    "delta_threshold_high": 0.5,  # Turn pump ON when roof is 1.5C hotter
-    "delta_threshold_low": 0.1,    # Turn pump OFF when roof is only 0.5C hotter
-    "core_start_hour": 8,
-    "core_end_hour": 18
 }
 
 # GPIO pins

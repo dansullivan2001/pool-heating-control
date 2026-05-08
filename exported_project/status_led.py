@@ -14,9 +14,9 @@ except Exception:
 # Patterns are a list of (value, duration_ms).
 # value: 1 -> LED on, 0 -> LED off
 PATTERNS = {
-    "ok":           [(1, 200),  (0, 2000)],   # one short blink every 2s (200ms on)
+    "ok":           [(1, 1500),  (0, 1500)],   # one short blink every 2s (200ms on)
     "mqtt_offline": [(1, 250),  (0, 250)],    # 0.5s cycle (fast flash)
-    "sensor_missing":[(1,1500), (0,100)],     # long on, short off
+    "sensor_missing":[(1,100), (0,100)],     # long on, short off
     "critical":     [(1,1000), (0,1000)],     # steady slow blink for critical
 }
 

@@ -1,5 +1,5 @@
-# network/mqtt.py
-__version__ = "0.4.0"
+# mqtt.py
+__version__ = "0.3.0"
 
 import time
 import sys
@@ -15,14 +15,13 @@ except ImportError:
 
 
 class MQTTManager:
-    def __init__(self, aio_username, aio_key, feeds, wifi_manager=None, client_id="pico-client", keepalive=60, watchdog_interval=10, restart_callback=None, message_handler=None):
+    def __init__(self, aio_username, aio_key, feeds, wifi_manager=None, client_id="pico-client", keepalive=60, watchdog_interval=10, restart_callback=None):
         self.aio_username = aio_username
         self.aio_key = aio_key
         self.feeds = feeds
         self.wifi_manager = wifi_manager
         self.keepalive = keepalive
         self.watchdog_interval = watchdog_interval
-        self.message_handler = message_handler
         self.publish_interval = 10
         self._last_publish = {} 
         self.restart_callback = restart_callback or (lambda: None)  # default to exit
@@ -49,9 +48,6 @@ class MQTTManager:
     # -------------------------------------------------------------------------
     def _init_pico_client(self):
         self.client = MQTTClient(self.client_id, self.server, self.port, self.user, self.password, self.keepalive)
-        # Hook for incoming messages
-        self.client.set_callback(self._on_message)
-
 
     def _init_desktop_client(self):
         # self.client = paho.Client(client_id=self.client_id, callback_api_version=1)
@@ -60,7 +56,7 @@ class MQTTManager:
             self.client.username_pw_set(self.user, self.password)
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
-        self.client.on_message = self._on_message
+
 
 
     # -------------------------------------------------------------------------
@@ -72,8 +68,6 @@ class MQTTManager:
                 self.client.connect()
                 self.connected = True
                 state['mqtt_connected'] = True
-                self.subscribe(self.feeds.manual_override)
-                self.subscribe(self.feeds.ota_trigger)
                 print("✅ MQTT connected (pico)")
             except Exception as e:
                 print(f"❌ MQTT connect failed: {e}")
@@ -84,13 +78,12 @@ class MQTTManager:
                 self.client.connect(self.server, self.port, self.keepalive)
                 self.client.loop_start()
                 self.connected = True
-                #state['mqtt_connected'] = True
+                state['mqtt_connected'] = True
                 print("✅ MQTT connected (desktop)")
             except Exception as e:
                 print(f"❌ MQTT connect failed: {e}")
                 self.connected = False
                 state['mqtt_connected'] = False
-
         return self.connected
 
     def disconnect(self):
@@ -122,8 +115,6 @@ class MQTTManager:
         if not isinstance(msg, (str, bytes)):
             msg = str(msg)
 
-        self._last_publish[topic] = now  # Update last publish time for this topic  
-
         if self.connected:
             try:
                 if BACKEND == "pico":
@@ -152,27 +143,6 @@ class MQTTManager:
                     print(f"⚠️ MQTT flush failed: {e}")
                     self.queue.put((topic, msg))
                     break  # stop, keep remaining messages
-
-    def subscribe(self, topic):
-        try:
-            self.client.subscribe(topic)
-            print(f"📡 Subscribed to {topic}")
-        except Exception as e:
-            print(f"⚠️ MQTT subscribe failed for {topic}: {e}")
-
-    def _on_message(self, client, userdata=None, msg=None):
-        if BACKEND == "pico":
-            topic, payload = client, userdata
-        else:
-            topic, payload = msg.topic, msg.payload
-
-        payload_str = payload.decode() if isinstance(payload, bytes) else str(payload)
-        print(f"📩 MQTT message on {topic}: {payload_str}")
-
-        # Forward to external handler
-        if self.message_handler:
-            self.message_handler(topic, payload_str)
-
 
     # --- Watchdog ---
     def watchdog(self):
@@ -203,16 +173,6 @@ class MQTTManager:
             self.connected = True
             state['mqtt_connected'] = True
             print("✅ MQTT desktop connected")
-
-
-            # Subscribe to control feeds (if we connected successfully)
-            try:
-                self.subscribe(self.feeds.manual_override)
-                self.subscribe(self.feeds.ota_trigger)
-            except Exception as e:
-                print(f"⚠️ Failed to subscribe: {e}")
-
-
         else:
             self.connected = False
             state['mqtt_connected'] = False
@@ -233,23 +193,13 @@ class MQTTManager:
         if BACKEND == "desktop" and self.connected:
             self.client.loop(timeout=0.1)  # non-blocking
             # Check connection even if desktop client thinks it's connected
-            if self.wifi_manager:
-                wifi_ok = self.wifi_manager.is_connected()
-                if not self.connected and wifi_ok and not getattr(self, "_mqtt_reconnecting", False):
-                    self._mqtt_reconnecting = True
-                    print("[MQTT] WiFi restored, reconnecting MQTT...")
-                    self.connect()
-                    self.flush_queue()
-                elif self.connected:
-                    self._mqtt_reconnecting = False
-        if BACKEND == "pico" and self.connected:
-            try:
-                self.client.check_msg()  # 👈 process any incoming messages
-            except Exception as e:
-                print(f"⚠️ MQTT check_msg failed: {e}")
+            if self.wifi_manager and self.wifi_manager.is_connected() and not self.connected:
+                print("[MQTT] WiFi restored, reconnecting MQTT...")
+                self.connect()
+                self.flush_queue()
+        if BACKEND == "pico":
             self.flush_queue()
             if self.wifi_manager and self.wifi_manager.is_connected() and not self.connected:
                 print("[MQTT] WiFi restored, reconnecting MQTT (pico)...")
                 self.connect()
                 self.flush_queue()
-

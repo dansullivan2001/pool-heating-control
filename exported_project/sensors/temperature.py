@@ -1,5 +1,5 @@
 # sensors/temperature.py
-__version__ = "0.0.2"
+__version__ = "0.0.1"
 
 from state import state
 import time
@@ -21,13 +21,12 @@ class TemperatureSensor:
 
     def read(self):
         self.ds_sensor.convert_temp()
-        time.sleep(0.75)
+        time.sleep(0.1)
  #       return {rom_to_label.get(rom, rom) : self.ds_sensor.read_temp(rom) for rom in self.roms}
         readings = {}
         disconnected = []
         for rom in self.ds_sensor.roms:
-            rom_id = "".join("{:02x}".format(b) for b in rom)
-            label = rom_to_label.get(rom_id)
+            label = rom_to_label.get(rom)
             if label is None:
                 # ROM not recognized
                 print(f"⚠️ Warning: Unknown ROM {rom} detected!")
@@ -49,8 +48,7 @@ class TemperatureSensor:
         """Return a dict of {label: temperature} for all sensors."""
         temps = {}
         for rom in self.ds_sensor.scan():
-            rom_id = "".join("{:02x}".format(b) for b in rom)
-            label = rom_to_label.get(rom_id, rom_id)
+            label = rom_to_label.get(rom, rom)
             temp = self.ds_sensor.read_temp(rom)
             temps[label] = temp
         return temps

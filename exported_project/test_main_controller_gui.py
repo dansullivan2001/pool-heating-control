@@ -67,8 +67,6 @@ controller = Controller(
         "max_enclosure_temp": CONFIG["max_enclosure_temp"],
         "publish_interval": CONFIG["publish_interval"],
         "manual_override_duration": CONFIG["manual_override_duration"],
-        "core_start_hour": CONFIG["core_start_hour"],
-        "core_end_hour": CONFIG["core_end_hour"],
     }
 )
 gui.bind_state(controller.state)
@@ -115,102 +113,83 @@ network.pre_restart_hook = pump_off_hook
 
 # ---------- Update loop ----------
 def update_loop():
-    # 1. --- Time Logic Mapping (Simulated Time) ---
-    # Defines 'now' once for the entire loop to keep timers in sync[cite: 4]
-    mode = gui.time_mode.get()
-    lt = list(time.localtime())
-    
-    if mode == "day":
-        lt[3] = 12 # Force to noon
-        now = time.mktime(tuple(lt))
-    elif mode == "night":
-        lt[3] = 23 # Force to 11 PM
-        now = time.mktime(tuple(lt))
-    else:
-        now = time.time() # Use PC system time
 
-    # 2. --- Wi-Fi Toggle & Hardware Sync ---
-    desired_wifi = gui.wifi_var.get()
-    if desired_wifi and not gui.wifi_connected():
-        gui.wifi.connect()
-    elif not desired_wifi and gui.wifi_connected():
-        gui.wifi.disconnect()
-
-    # Update state immediately so the debug window reflects the hardware
     wifi_up = gui.wifi_connected()
     state["wifi_connected"] = wifi_up
 
-    # 3. --- MQTT Housekeeping ---
     if not wifi_up and network.mqtt.connected:
         network.mqtt.disconnect()
-    elif wifi_up:
+    else:
+        # MQTT housekeeping
         network.mqtt.loop()
         network.mqtt.watchdog()
 
-    # 2. --- Hardware Input Sync (The "Hardware" Layer) ---
-    # We read the sensors exactly like the real Pico would
-    water_ok = water_level_sensor.read()
-
+    # --- Simulated sensor read ---
     temps = {}
     for rom in temperature_sensor.ds_sensor.scan():
         label = rom_to_label.get(rom, rom)
-        # Check if user clicked "Disable" for this specific sensor in the GUI
         if gui.disable_sensors.get(rom) and gui.disable_sensors[rom].get():
             temps[label] = None
         else:
             temps[label] = temperature_sensor.ds_sensor.read_temp(rom)
 
+    water_ok = water_level_sensor.read()
 
-    # 3. --- Data Mapping (The "State" Layer) ---
-    # Populate the global state so the Controller has fresh data[cite: 1, 3]
+    # --- Push into state ---
     state["temps"] = temps
     state["water_level_ok"] = bool(water_ok)
     state["sensors_ok"] = all(v is not None for v in temps.values())
     state["disconnected_sensors"] = [l for l, v in temps.items() if v is None]
-    state["wifi_connected"] = gui.wifi_var.get()
     state["mqtt_connected"] = network.mqtt.connected
-
-    # 4. --- Manual Override Logic ---
-    # Sync the GUI button to the state before the controller loop[cite: 1, 3]
-    gui_button_active = gui.button_pressed()
-    if gui_button_active and not state.get("manual_override"):
-        state["manual_override"] = True
-        controller._manual_override_start = now 
-    #elif not gui_button_active and state.get("manual_override"):
-    #    state["manual_override"] = False
-
-    # 5. --- Run Controller ---
-    # The controller processes safety (Section 2) and solar logic (Section 5)
-    controller.loop(now_ts=now)
-
-    # IMPROVED CRITICAL ERROR LOGIC
-    # It's a critical error if any hardware safety has tripped or we have a crash error
-    state["critical_error"] = (
-    state.get("last_error") is not None or
-    state.get("overtemp_shutdown", False) or
-    state.get("dry_run_protect", False)
-    )
-
-    # StatusLED checks 'sensors_ok' and 'disconnected_sensors'
-    # Ensure these reflect the actual state of the temps dict
-    state["sensors_ok"] = all(v is not None for v in temps.values())
-    state["disconnected_sensors"] = [l for l, v in temps.items() if v is None]
+    state["critical_error"] = state.get("last_error") is not None
+    state["wifi_connected"] = gui.wifi_connected()
 
 
-    # 6. --- Status LED Pattern Update ---
-    # This MUST run after controller.loop so it sees if a 'critical_error' was set[cite: 1, 4]
-    # It then calls gui.set_led_state() via the lambda function
+    # state["manual_override"] = gui.button_pressed()
+
+    # --- Manual override button ---
+    if gui.button_pressed():
+        if controller.state["manual_override"]:
+            # Cancel active override
+            controller.state["manual_override"] = False
+            controller._manual_override_start = None
+            controller._set_pump(False, reason="manual override cancelled by button")
+        else:
+            # Start a new override
+            controller.state["manual_override"] = True
+            controller._manual_override_start = time.time()
+
+    # --- Compute time to next periodic test ---
+    now = time.time()
+    interval = controller.config.get("pump_test_interval", 3600)
+    elapsed_since_test = now - controller._last_test
+    time_to_next_test = max(0, interval - elapsed_since_test)
+    state["time_to_next_test"] = time_to_next_test  # in seconds
+
+
+    # --- Run controller ---
+    controller.loop()
+
+    
+    # LED update
     status_led.update()
 
-    # If the controller timer finishes the boost, sync the GUI checkbox back to False
-    if not controller.state["manual_override"]:
-        gui.button_var.set(False)
+    # --- Wi-Fi toggle sync ---
+    desired_wifi = gui.wifi_var.get()
 
-    # 7. --- GUI View Refresh ---
-    # Pulls the controller's results (reason, timer, pump_on) back to the screen
+    if desired_wifi and not gui.wifi_connected():
+        gui.wifi.connect()
+    elif not desired_wifi and gui.wifi_connected():
+        gui.wifi.disconnect()
+
+
+
+
+
+
+    # --- Update GUI ---
     gui.update_from_state()
 
-    # Schedule next tick
     root.after(500, update_loop)
 
 # ---------- Start ----------

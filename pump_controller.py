@@ -38,13 +38,13 @@ rom_to_label = {
 }
 
 # ==== Parameters ====
-HIGH_THRESHOLD_DIFF = 1.0   # tReturn must exceed tFlow + this to keep pump running
+HIGH_THRESHOLD_DIFF = 0.2   # tReturn must exceed tFlow + this to keep pump running
 LOW_THRESHOLD_DIFF  = 0.0   # tReturn must fall below tFlow + this to shut off pump
-MAX_ENCLOSURE_TEMP = 50.0   # Max safe enclosure temp in °C (thermal shutoff)
+MAX_ENCLOSURE_TEMP = 55.0   # Max safe enclosure temp in °C (thermal shutoff)
 
 PUBLISH_INTERVAL     = 30     # seconds
-PUMP_TEST_INTERVAL   = 1200   # 20 minutes = 1200 seconds between pump tests
-PUMP_TEST_DURATION   = 60     # 60 seconds pump test duration
+PUMP_TEST_INTERVAL   = 600   # 10 minutes = 600 seconds between pump tests
+PUMP_TEST_DURATION   = 90     # 60 seconds pump test duration
 last_publish_time    = 0
 last_test_time       = 0
 

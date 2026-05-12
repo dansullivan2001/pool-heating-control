@@ -1,148 +1,142 @@
-#import pump_controller
-print("hello world")
+# main.py
+__version__ = "0.9.0"
 
-import network, time, os, machine, urequests
-from umqtt.simple import MQTTClient
-import config
+import gc
+import time
 
-# ==== Wi-Fi / Adafruit IO ====
-SSID = config.WIFI_SSID
-PASSWORD = config.WIFI_PASSWORD
-AIO_USERNAME = config.AIO_USERNAME
-AIO_KEY = config.AIO_KEY
-AIO_FEED_OTA_TRIGGER = f"{AIO_USERNAME}/feeds/ota_trigger"
+# -------------------------------------------------------------------------
+# Boot: OTA integrity check — must run before any other imports
+# so that if a bad update was applied, we restore and reboot before
+# anything broken gets imported.
+# -------------------------------------------------------------------------
+from ota import verify_or_rollback
+verify_or_rollback()
 
-DEFAULT_BRANCH = "main"
-LOCAL_FILE = "pump_controller.py"
-BACKUP_FILE = "pump_controller_backup.py"
+# -------------------------------------------------------------------------
+# Normal imports (only reached if firmware verified clean)
+# -------------------------------------------------------------------------
+from network import Network
+from sensors import Sensors
+from controller.controller import Controller
+from config import CONFIG, PIN_TEMPS, PIN_WATER_LEVEL, PIN_BUTTON
+from state import state
+from network.ntp import sync_time, is_time_synced
 
-# ==== Wi-Fi Connect ====
-def connect_wifi():
-    wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
-    if not wlan.isconnected():
-        wlan.connect(SSID, PASSWORD)
-        for _ in range(10):
-            if wlan.isconnected():
-                break
-            time.sleep(1)
-    return wlan
+# -------------------------------------------------------------------------
+# Boot
+# -------------------------------------------------------------------------
 
-# ==== OTA helpers ====
-triggered = False
-branch_to_update = DEFAULT_BRANCH
-force_apply_flag = False
+print(f"🚀 Solar Pool Controller v{__version__} starting...")
 
-def sub_cb(topic, msg):
-    global triggered, branch_to_update, force_apply_flag
-    payload = msg.decode().strip()
-    parts = payload.split(":")
-    if parts[0] == "1":
-        triggered = True
-        branch_to_update = parts[1] if len(parts) > 1 else DEFAULT_BRANCH
-        if len(parts) > 2 and parts[2].lower() == "force":
-            force_apply_flag = True
+# Initialise hardware
+sensors = Sensors(temp_pin=PIN_TEMPS, level_pin=PIN_WATER_LEVEL, button_pin=PIN_BUTTON)
 
-def reset_feed():
-    try:
-        client = MQTTClient("pico_ota_reset", "io.adafruit.com",
-                            user=AIO_USERNAME, password=AIO_KEY)
-        client.connect()
-        client.publish(AIO_FEED_OTA_TRIGGER, b"0")
-        client.disconnect()
-    except Exception as e:
-        print("Could not reset OTA feed:", e)
-
-def ota_update(branch=DEFAULT_BRANCH, force_apply=False):
-    try:
-        url = f"https://raw.githubusercontent.com/dansullivan2001/pool-heating-control/{branch}/pump_controller.py"
-        print("Fetching update from:", url)
-        r = urequests.get(url)
-        if r.status_code != 200:
-            print("Update fetch failed:", r.status_code)
-            return
-        new_code = r.text
-        r.close()
-
-        # Extract remote version
-        remote_version = None
-        for line in new_code.splitlines():
-            if line.strip().startswith("__version__"):
-                remote_version = line.split("=")[1].strip().strip('"').strip("'")
-                break
-
-        # Extract local version
-        local_version = None
-        try:
-            with open(LOCAL_FILE) as f:
-                for line in f:
-                    if line.strip().startswith("__version__"):
-                        local_version = line.split("=")[1].strip().strip('"').strip("'")
-                        break
-        except:
-            pass
-
-        # Skip update if not newer unless forced
-        if not force_apply and remote_version and local_version:
-            if tuple(map(int, remote_version.split("."))) <= tuple(map(int, local_version.split("."))):
-                print("Already up to date. No update applied.")
-                reset_feed()
-                return
-
-        # Backup and write new file
-        if LOCAL_FILE in os.listdir():
-            os.rename(LOCAL_FILE, BACKUP_FILE)
-        with open(LOCAL_FILE, "w") as f:
-            f.write(new_code)
-
-        print("Update applied! Resetting trigger and rebooting...")
-        reset_feed()
-        machine.reset()
-
-    except Exception as e:
-        print("OTA error:", e)
-
-def check_ota_trigger_nonblocking():
-    global triggered
-    try:
-        client = MQTTClient("pico_ota", "io.adafruit.com",
-                            user=AIO_USERNAME, password=AIO_KEY)
-        client.set_callback(sub_cb)
-        client.connect()
-        client.subscribe(AIO_FEED_OTA_TRIGGER)
-        client.publish(AIO_FEED_OTA_TRIGGER + "/get", b"")
-        # Poll a few times quickly
-        for _ in range(5):
-            client.check_msg()
-            if triggered:
-                break
-            time.sleep(0.1)
-        client.disconnect()
-
-        if triggered:
-            print("OTA triggered!")
-            ota_update(branch=branch_to_update, force_apply=force_apply_flag)
-        else:
-            print("No OTA trigger")
-            reset_feed()
-    except Exception as e:
-        print("Non-blocking OTA check failed:", e)
-
-# ==== Startup sequence ====
-connect_wifi()
-check_ota_trigger_nonblocking()  # non-blocking OTA
+# Perform first sensor reads immediately so state is populated before
+# the controller's first loop. This ensures we start in a known safe state
+# rather than relying on defaults.
 try:
-    import pump_controller
-    if BACKUP_FILE in os.listdir():
-        os.remove(BACKUP_FILE)  # remove backup if update successful
+    sensors.temperature.read()          # populates state["temps"]
 except Exception as e:
-    print("Controller crashed:", e)
-    if BACKUP_FILE in os.listdir():
-        print("Restoring backup controller...")
+    state["last_error"] = str(e)
+    print(f"⚠️ Initial temperature read failed: {e}")
+
+try:
+    state["water_level_ok"] = bool(sensors.water_level.read())
+except Exception as e:
+    state["last_error"] = str(e)
+    state["water_level_ok"] = False     # fail-safe
+    print(f"⚠️ Initial water level read failed: {e}")
+
+# Connect network (blocking on boot is acceptable — we want MQTT before first loop)
+network = Network()
+network.connect()
+
+# NTP time sync — must happen after WiFi is connected.
+# Sets the Pico RTC to UK local time (GMT or BST) so that
+# core hours comparisons in the controller are correct.
+if sync_time():
+    state["time_synced"] = True
+    state["last_ntp_sync"] = time.time()
+else:
+    print("⚠️ NTP sync failed at boot — core hours may be incorrect until sync succeeds")
+
+# Build controller
+controller = Controller(network, CONFIG, sensors)
+
+print("✅ Boot complete, entering main loop")
+
+# -------------------------------------------------------------------------
+# Main loop
+# -------------------------------------------------------------------------
+
+SENSOR_READ_INTERVAL = 2      # seconds between sensor reads
+_last_sensor_read    = 0
+
+NTP_SYNC_HOUR        = 3      # resync daily at 03:00 local time
+_last_ntp_day        = None   # day-of-year of last successful sync
+
+while True:
+    now = time.time()
+
+    # 1. Read sensors on interval (non-blocking between reads)
+    if now - _last_sensor_read >= SENSOR_READ_INTERVAL:
         try:
-            if LOCAL_FILE in os.listdir():
-                os.remove(LOCAL_FILE)
-            os.rename(BACKUP_FILE, LOCAL_FILE)
-            machine.reset()
-        except Exception as e2:
-            print("Rollback failed:", e2)
+            sensors.temperature.read()   # updates state["temps"] internally
+        except Exception as e:
+            state["last_error"] = str(e)
+            print(f"⚠️ Temperature read error: {e}")
+
+        try:
+            state["water_level_ok"] = bool(sensors.water_level.read())
+        except Exception as e:
+            state["last_error"] = str(e)
+            state["water_level_ok"] = False   # fail-safe on error
+            print(f"⚠️ Water level read error: {e}")
+
+        _last_sensor_read = now
+
+    # 2. Daily NTP resync at 03:00 local time
+    #    Keeps the RTC accurate across DST transitions and long uptimes.
+    _today = time.localtime(now)[7]   # day-of-year
+    _hour  = time.localtime(now)[3]
+    if _hour == NTP_SYNC_HOUR and _last_ntp_day != _today:
+        print("🕐 NTP: Daily resync...")
+        if sync_time():
+            state["time_synced"]    = True
+            state["last_ntp_sync"]  = now
+            _last_ntp_day           = _today
+        else:
+            print("⚠️ NTP: Daily resync failed — will retry next minute")
+
+    # 3. Network housekeeping (non-blocking)
+    try:
+        network.loop()
+    except Exception as e:
+        state["last_error"] = str(e)
+        print(f"⚠️ Network loop error: {e}")
+
+    # 4. OTA check (if requested via MQTT)
+    if state.get("ota_pending"):
+        state["ota_pending"] = False
+        try:
+            from ota import check_for_update
+            controller._set_pump(False, reason="OTA update starting", urgent=True)
+            gc.collect()              # free as much RAM as possible before download
+            check_for_update()
+            # check_for_update() reboots the Pico if updates were applied.
+            # If we reach here, no updates were needed or the check failed safely.
+            print("ℹ️ OTA: No updates available")
+        except Exception as e:
+            state["last_error"] = str(e)
+            print(f"⚠️ OTA check failed: {e}")
+
+    # 5. Controller logic
+    try:
+        controller.loop()
+    except Exception as e:
+        state["last_error"] = str(e)
+        state["critical_error"] = True
+        print(f"❌ Controller error: {e}")
+
+    # 6. Memory management
+    gc.collect()

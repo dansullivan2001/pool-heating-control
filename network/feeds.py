@@ -1,5 +1,5 @@
 # network/feeds.py
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 class Feeds:
     """
@@ -23,6 +23,7 @@ class Feeds:
             "tEnclosure":       f"{username}/feeds/tEnclosure",
             "tFlow":            f"{username}/feeds/tFlow",
             "tReturn":          f"{username}/feeds/tReturn",
+            "delta_t":          f"{username}/feeds/delta_temp",
             "debug":            f"{username}/feeds/debug",
         }
 

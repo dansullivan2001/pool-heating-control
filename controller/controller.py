@@ -1,5 +1,5 @@
 # controller/controller.py
-__version__ = "0.8.0"
+__version__ = "0.9.2"
 
 import time
 import json
@@ -31,6 +31,7 @@ class Controller:
         self._last_publish = 0
         self._manual_override_start = None
         self._test_start_time = None
+        self._pump_on_since = None
 
         # Initialise test timer to now so we don't immediately test on boot
         now = time.time()
@@ -211,7 +212,12 @@ class Controller:
             elif self.state["pump_on"] and delta < low_thresh:
                 auto_wants_pump = False
                 auto_reason = f"insufficient gain ({delta:.1f}C)"
-            # else: delta is between thresholds — keep current state (hysteresis)
+            elif auto_wants_pump:
+                # Pump is on, delta still adequate — keep running
+                auto_reason = f"solar heating ({delta:.1f}C)"
+            else:
+                # Pump is off, delta not yet high enough — keep off
+                auto_reason = f"waiting for solar gain ({delta:.1f}C)"
         else:
             self.state["delta_t"] = None
             auto_wants_pump = False
@@ -269,6 +275,9 @@ class Controller:
         self.state["pump_on"] = on
         self.state["pump_reason"] = reason
 
+        if state_changed:
+            self._pump_on_since = time.time() if on else None
+
         if state_changed or reason_changed:
             print(f"🔄 Pump {'ON' if on else 'OFF'} — {reason}")
             self.publish_state(force_all=False, urgent=urgent)
@@ -292,6 +301,7 @@ class Controller:
             return
 
         feeds = self.network.feeds
+        now = time.time()
 
         # Always publish pump state
         self.mqtt.publish(feeds.pump_state, int(self.state["pump_on"]), urgent=urgent)
@@ -304,9 +314,44 @@ class Controller:
                     print(f"⚠️ No feed configured for sensor '{label}'")
                 elif value is not None:
                     self.mqtt.publish(topic, value)
+            if self.state["delta_t"] is not None:
+                self.mqtt.publish(feeds.delta_t, self.state["delta_t"])
 
-        # Full state debug dump
-        self.mqtt.publish(feeds.debug, json.dumps(self.state))
+        # Derived fields
+        t = time.localtime(now)
+        local_time = "{:02d}:{:02d}".format(t[3], t[4])
+        start_h = self.config.get("core_start_hour", 9)
+        end_h = self.config.get("core_end_hour", 18)
+        in_core_hours = start_h <= t[3] < end_h
+        pump_runtime_s = (
+            int(now - self._pump_on_since)
+            if (self.state["pump_on"] and self._pump_on_since is not None)
+            else 0
+        )
+
+        debug = {
+            "pump_on":                  self.state["pump_on"],
+            "pump_reason":              self.state["pump_reason"],
+            "pump_runtime_s":           pump_runtime_s,
+            "delta_t":                  self.state["delta_t"],
+            "temps":                    self.state["temps"],
+            "local_time":               local_time,
+            "in_core_hours":            in_core_hours,
+            "manual_override":          self.state["manual_override"],
+            "manual_disabled":          self.state["manual_disabled"],
+            "test_running":             self.state["test_running"],
+            "time_to_next_test":        int(self.state["time_to_next_test"]),
+            "water_level_ok":           self.state["water_level_ok"],
+            "sensors_ok":               self.state["sensors_ok"],
+            "disconnected_sensors":     self.state["disconnected_sensors"],
+            "dry_run_protect":          self.state["dry_run_protect"],
+            "overtemp_shutdown":        self.state["overtemp_shutdown"],
+            "enclosure_sensor_missing": self.state["enclosure_sensor_missing"],
+            "critical_error":           self.state["critical_error"],
+            "last_error":               self.state["last_error"],
+        }
+
+        self.mqtt.publish(feeds.debug, json.dumps(debug))
 
     def handle_mqtt_message(self, topic, payload):
         """

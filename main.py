@@ -20,7 +20,7 @@ from sensors import Sensors
 from controller.controller import Controller
 from config import CONFIG, PIN_TEMPS, PIN_WATER_LEVEL, PIN_BUTTON
 from state import state
-from ntp import sync_time, is_time_synced
+from network.ntp import sync_time, is_time_synced
 
 # -------------------------------------------------------------------------
 # Boot

@@ -1,4 +1,4 @@
-# ntp.py
+# network/ntp.py
 __version__ = "0.1.0"
 
 """
@@ -14,7 +14,7 @@ DST rules for the UK:
   - BST = UTC+1, GMT = UTC+0
 
 Usage:
-    from ntp import sync_time, is_time_synced
+    from network.ntp import sync_time, is_time_synced
     sync_time()                  # call at boot after WiFi is up
     is_time_synced()             # returns True if RTC year >= 2024
 """

@@ -1,22 +1,22 @@
 {
   "version": "0.9.0",
-  "base_url": "https://raw.githubusercontent.com/YOURNAME/YOURREPO/main/firmware",
+  "base_url": "https://raw.githubusercontent.com/dansullivan2001/pool-heating-control/main",
   "files": {
     "main.py":                    "0.9.0",
     "state.py":                   "0.3.0",
-    "config.py":                  "0.0.1",
+    "config.py":                  "0.1.0",
     "ota.py":                     "0.1.0",
-    "ntp.py":                     "0.1.0",
+    "network/ntp.py":             "0.1.0",
     "status_led.py":              "0.2.0",
-    "utils.py":                   "0.0.1",
+    "utils.py":                   "0.1.0",
     "controller/controller.py":   "0.8.0",
     "sensors/__init__.py":        "0.1.0",
     "sensors/temperature.py":     "0.1.0",
     "sensors/water_level.py":     "0.1.0",
     "sensors/button.py":          "0.1.0",
-    "network/__init__.py":        "0.1.0",
-    "network/mqtt.py":            "0.5.0",
+    "network/__init__.py":        "0.2.0",
+    "network/mqtt.py":            "0.5.1",
     "network/wifi.py":            "0.4.0",
-    "network/feeds.py":           "0.4.0"
+    "network/feeds.py":           "0.5.0"
   }
 }

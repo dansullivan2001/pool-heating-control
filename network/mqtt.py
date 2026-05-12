@@ -1,5 +1,5 @@
 # network/mqtt.py
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 import time
 import sys
@@ -160,7 +160,7 @@ class MQTTManager:
         self.client.on_connect    = self._on_connect
         self.client.on_disconnect = self._on_disconnect
         self.client.on_message    = self._on_message_desktop
-        self._loop_started = False
+        self._ever_connected = False
 
     # -------------------------------------------------------------------------
     # Connection (blocking — boot only)
@@ -193,15 +193,16 @@ class MQTTManager:
             return False
 
     def _connect_desktop(self):
+        # Desktop uses manual loop() calls from _loop_desktop rather than
+        # loop_start()'s background thread. This means any paho internal
+        # exception (e.g. struct.error in _handle_suback) is caught by
+        # _loop_desktop's except handler instead of crashing an unjoined thread.
         try:
-            if self._loop_started:
-                # Reuse the existing background thread — calling loop_start()
-                # again stacks a new thread, leading to MQTT_ERR_CONN_LOST (rc=7).
+            if self._ever_connected:
                 self.client.reconnect()
             else:
                 self.client.connect(self.server, self.port, self.keepalive)
-                self.client.loop_start()
-                self._loop_started = True
+                self._ever_connected = True
             # Stamp the attempt time so _try_reconnect's interval guard fires
             # immediately, preventing a second connect() before _on_connect runs.
             # (paho connect() is async — connected stays False until the callback.)
@@ -217,9 +218,6 @@ class MQTTManager:
 
     def disconnect(self):
         try:
-            if BACKEND == "desktop":
-                self.client.loop_stop()
-                self._loop_started = False
             self.client.disconnect()
         except Exception:
             pass
@@ -331,9 +329,8 @@ class MQTTManager:
         self.flush_queue()
 
     def _loop_desktop(self):
-        if not self.connected:
+        if not self._ever_connected:
             return
-        # paho's background thread handles callbacks; loop() keeps it alive
         try:
             self.client.loop(timeout=0.05)
         except Exception as e:

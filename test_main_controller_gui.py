@@ -28,7 +28,7 @@ from status_led import DesktopStatusLED
 from state import state
 from sensors.temperature import TemperatureSensor
 from sensors.water_level import WaterLevelSensor
-from network import Network
+from net import Network
 from mocks.mock_hardware_gui import MockHardwareGUI
 from mocks.mock_hardware import MockDS18X20, MockOneWire, MockPin
 from controller.controller import Controller

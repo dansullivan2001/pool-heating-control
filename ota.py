@@ -1,5 +1,5 @@
 # ota.py
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 """
 Over-the-air update manager for the Pico pool controller.
@@ -43,10 +43,10 @@ Manifest format (manifest.json hosted at secrets.OTA_MANIFEST_URL)
     "sensors/temperature.py":     "0.1.0",
     "sensors/water_level.py":     "0.1.0",
     "sensors/button.py":          "0.1.0",
-    "network/__init__.py":        "0.1.0",
-    "network/mqtt.py":            "0.5.0",
-    "network/wifi.py":            "0.4.0",
-    "network/feeds.py":           "0.4.0"
+    "net/__init__.py":            "0.1.0",
+    "net/mqtt.py":                "0.5.0",
+    "net/wifi.py":                "0.4.0",
+    "net/feeds.py":               "0.4.0"
   }
 }
 """
@@ -77,7 +77,7 @@ CRITICAL_FILES = [
     "state.py",
     "ota.py",
     "controller/controller.py",
-    "network/__init__.py",
+    "net/__init__.py",
     "sensors/__init__.py",
 ]
 

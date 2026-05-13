@@ -65,7 +65,7 @@ utils.py                 # Shared utilities
 controller/
   controller.py          # Safety chain and pump control logic
 
-network/
+net/
   __init__.py            # Network aggregator (WiFi + MQTT)
   mqtt.py                # MQTT manager with publish queue and watchdog
   wifi.py                # WiFi manager
@@ -124,7 +124,7 @@ Copy all source files to the Pico filesystem. The following should be excluded:
 Using `mpremote`:
 ```bash
 mpremote connect /dev/tty.usbmodem* cp main.py secrets.py config.py state.py ota.py utils.py status_led.py manifest.json :
-mpremote connect /dev/tty.usbmodem* cp -r controller/ network/ sensors/ :
+mpremote connect /dev/tty.usbmodem* cp -r controller/ net/ sensors/ :
 ```
 
 `main.py` runs automatically on boot.

@@ -1,5 +1,5 @@
 # sensors/water_level.py
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 import time
 
@@ -37,7 +37,7 @@ class WaterLevelSensor:
                           we're slow to declare water present, fast to declare it gone.
             gui:          optional GUI object for desktop simulation.
         """
-        self.pin          = Pin(pin)
+        self.pin          = Pin(pin, Pin.IN)
         self.debounce_ms  = debounce_ms
         self.wet_delay    = wet_delay
         self.dry_delay    = dry_delay
@@ -98,7 +98,7 @@ class WaterLevelSensor:
         """Read the raw pin value, accounting for GUI override in simulation."""
         if hasattr(self.pin, "gui") and self.pin.gui is not None:
             return 1 if self.pin.gui.water_present() else 0
-        return self.pin.value()
+        return 1 - self.pin.value()  # active-low: LOW = water present
 
     @staticmethod
     def _now_ms():

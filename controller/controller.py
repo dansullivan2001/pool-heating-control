@@ -1,13 +1,22 @@
 # controller/controller.py
-__version__ = "0.9.2"
+__version__ = "0.9.3"
 
 import time
 import json
 from state import state
 
+try:
+    import machine
+    def _make_pump_pin(pin_num):
+        return machine.Pin(pin_num, machine.Pin.OUT)
+except ImportError:
+    from mocks.mock_hardware import MockPin
+    def _make_pump_pin(pin_num):
+        return MockPin(pin_num)
+
 
 class Controller:
-    def __init__(self, network, config, sensors=None):
+    def __init__(self, network, config, sensors=None, pump_pin=None):
         """
         Controller handles pump logic, MQTT publishing, and safety checks.
 
@@ -26,6 +35,7 @@ class Controller:
         self.state = state      # shared global state
         self.config = config
         self.mqtt = network.mqtt
+        self._pump_pin = pump_pin
 
         # --- Timing ---
         self._last_publish = 0
@@ -274,6 +284,9 @@ class Controller:
 
         self.state["pump_on"] = on
         self.state["pump_reason"] = reason
+
+        if self._pump_pin is not None:
+            self._pump_pin.value(1 if on else 0)
 
         if state_changed:
             self._pump_on_since = time.time() if on else None

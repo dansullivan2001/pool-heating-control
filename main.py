@@ -1,5 +1,5 @@
 # main.py
-__version__ = "0.9.1"
+__version__ = "0.9.3"
 
 import gc
 import time
@@ -15,12 +15,13 @@ verify_or_rollback()
 # -------------------------------------------------------------------------
 # Normal imports (only reached if firmware verified clean)
 # -------------------------------------------------------------------------
-from network import Network
+from net import Network
 from sensors import Sensors
 from controller.controller import Controller
-from config import CONFIG, PIN_TEMPS, PIN_WATER_LEVEL, PIN_BUTTON
+from config import CONFIG, PIN_TEMPS, PIN_WATER_LEVEL, PIN_BUTTON, PIN_PUMP, PIN_LED
 from state import state
-from network.ntp import sync_time, is_time_synced
+from net.ntp import sync_time, is_time_synced
+from status_led import StatusLED
 
 # -------------------------------------------------------------------------
 # Boot
@@ -29,6 +30,9 @@ from network.ntp import sync_time, is_time_synced
 print(f"🚀 Solar Pool Controller v{__version__} starting...")
 
 # Initialise hardware
+import machine
+pump_pin = machine.Pin(PIN_PUMP, machine.Pin.OUT)
+pump_pin.value(0)  # ensure pump off at boot
 sensors = Sensors(temp_pin=PIN_TEMPS, level_pin=PIN_WATER_LEVEL, button_pin=PIN_BUTTON)
 
 # Perform first sensor reads immediately so state is populated before
@@ -61,8 +65,11 @@ else:
     print("⚠️ NTP sync failed at boot — core hours may be incorrect until sync succeeds")
 
 # Build controller
-controller = Controller(network, CONFIG, sensors)
+controller = Controller(network, CONFIG, sensors, pump_pin=pump_pin)
 network.pre_restart_hook = lambda: controller._set_pump(False, reason="watchdog restart", urgent=False)
+
+# Status LED
+status_led = StatusLED(pin_num=PIN_LED, state_ref=state)
 
 print("✅ Boot complete, entering main loop")
 
@@ -139,5 +146,8 @@ while True:
         state["critical_error"] = True
         print(f"❌ Controller error: {e}")
 
-    # 6. Memory management
+    # 6. Status LED
+    status_led.update()
+
+    # 7. Memory management
     gc.collect()

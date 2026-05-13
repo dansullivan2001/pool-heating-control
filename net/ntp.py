@@ -14,7 +14,7 @@ DST rules for the UK:
   - BST = UTC+1, GMT = UTC+0
 
 Usage:
-    from network.ntp import sync_time, is_time_synced
+    from net.ntp import sync_time, is_time_synced
     sync_time()                  # call at boot after WiFi is up
     is_time_synced()             # returns True if RTC year >= 2024
 """

@@ -8,7 +8,7 @@
     "ota.py":                     "0.1.2",
     "net/ntp.py":                 "0.1.0",
     "status_led.py":              "0.2.0",
-    "utils.py":                   "0.1.0",
+    "utils.py":                   "0.1.1",
     "controller/controller.py":   "0.9.4",
     "sensors/__init__.py":        "0.1.0",
     "sensors/temperature.py":     "0.1.0",

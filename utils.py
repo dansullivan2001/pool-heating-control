@@ -1,5 +1,5 @@
 # utils.py
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # Maximum log lines held in memory.
 # Keeps RAM usage bounded on long-running Pico deployments.

@@ -1,5 +1,5 @@
 # controller/controller.py
-__version__ = "0.9.3"
+__version__ = "0.9.4"
 
 import time
 import json
@@ -170,8 +170,13 @@ class Controller:
         is_core_hours = start_h <= current_hour < end_h
         is_holiday = self.state.get("manual_disabled", False)
 
-        # Update next-test countdown for GUI / debug
+        # Update next-test countdown for GUI / debug.
+        # While the pump is already running, freeze the timer — sensors are
+        # already circulating so no test is needed until the pump goes idle.
         test_int = self.config.get("pump_test_interval", 600)
+        if self.state["pump_on"] and not self.state["test_running"]:
+            self._last_test = now
+            self.state["last_test_ts"] = now
         self.state["time_to_next_test"] = max(0, test_int - (now - self._last_test))
 
         # --- Manual boost (works outside core hours, but not during safety stop) ---
@@ -343,6 +348,7 @@ class Controller:
         )
 
         debug = {
+            "fw_version":               self.state["fw_version"],
             "pump_on":                  self.state["pump_on"],
             "pump_reason":              self.state["pump_reason"],
             "pump_runtime_s":           pump_runtime_s,

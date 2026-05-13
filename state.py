@@ -1,5 +1,5 @@
 # state.py
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 # Central shared state dictionary for the whole controller.
 # ALL keys used anywhere in the codebase must be declared here with safe defaults.
 # Rule: safety-critical booleans default to the SAFE (restrictive) value.
@@ -45,6 +45,7 @@ state = {
 
     # --- OTA ---
     "ota_pending":          False,  # set True by MQTT to trigger OTA check
+    "fw_version":           "unknown",  # manifest "version" field, populated at boot
 
     # --- Debug / diagnostics ---
     "last_error":           None,   # string or exception message from last crash

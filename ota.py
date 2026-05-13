@@ -1,5 +1,5 @@
 # ota.py
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 """
 Over-the-air update manager for the Pico pool controller.
@@ -54,6 +54,7 @@ Manifest format (manifest.json hosted at secrets.OTA_MANIFEST_URL)
 import os
 import time
 import gc
+import json
 
 try:
     import urequests
@@ -277,6 +278,13 @@ def check_for_update():
 
     for path in apply_order:
         _apply_one(path)
+
+    # Persist the manifest so fw_version reflects the new bundle on next boot.
+    try:
+        with open("manifest.json", "w") as f:
+            json.dump(manifest, f)
+    except Exception as e:
+        print(f"⚠️ OTA: Could not write manifest.json: {e}")
 
     print("🚀 OTA: Update applied — rebooting")
     time.sleep(1)

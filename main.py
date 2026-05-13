@@ -1,5 +1,5 @@
 # main.py
-__version__ = "0.9.3"
+__version__ = "0.9.4"
 
 import gc
 import time
@@ -28,6 +28,17 @@ from status_led import StatusLED
 # -------------------------------------------------------------------------
 
 print(f"🚀 Solar Pool Controller v{__version__} starting...")
+
+# Read the locally-stored manifest to populate fw_version in state.
+# OTA writes an updated manifest.json after each successful update, so this
+# always reflects the last-applied bundle version.
+try:
+    import json as _json
+    with open("manifest.json") as _f:
+        state["fw_version"] = _json.load(_f).get("version", "unknown")
+    del _json, _f
+except Exception:
+    pass  # state["fw_version"] stays "unknown" — non-fatal
 
 # Initialise hardware
 import machine

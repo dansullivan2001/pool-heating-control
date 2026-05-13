@@ -111,6 +111,14 @@ network = Network()
 gui.wifi = network.wifi
 network.wifi.wlan.gui = gui   # MockWiFi reads connected state from GUI
 network.connect()
+# Isolate GUI simulation from real Adafruit IO — suppress all MQTT I/O
+network.mqtt.publish                  = lambda *_a, **_kw: print(f"[MQTT] {_a[0]}: {_a[1]}")
+network.mqtt._subscribe_control_feeds = lambda: None
+network.mqtt.loop                     = lambda: None
+network.mqtt.watchdog                 = lambda: None
+network.mqtt.disconnect               = lambda: None
+network.mqtt.connected                = True
+state["mqtt_connected"]               = True
 
 # -------------------------------------------------------------------------
 # Controller

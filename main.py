@@ -1,5 +1,5 @@
 # main.py
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 
 import gc
 import time
@@ -62,6 +62,7 @@ else:
 
 # Build controller
 controller = Controller(network, CONFIG, sensors)
+network.pre_restart_hook = lambda: controller._set_pump(False, reason="watchdog restart", urgent=False)
 
 print("✅ Boot complete, entering main loop")
 

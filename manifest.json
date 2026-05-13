@@ -1,8 +1,8 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "base_url": "https://raw.githubusercontent.com/dansullivan2001/pool-heating-control/main",
   "files": {
-    "main.py":                    "0.9.4",
+    "main.py":                    "0.9.5",
     "state.py":                   "0.3.1",
     "config.py":                  "0.1.1",
     "ota.py":                     "0.1.2",

@@ -1,5 +1,5 @@
 # main.py
-__version__ = "0.9.4"
+__version__ = "0.9.5"
 
 import gc
 import time
@@ -139,6 +139,8 @@ while True:
         state["ota_pending"] = False
         try:
             from ota import check_for_update
+            network.mqtt.publish(network.feeds.ota_trigger, "0", urgent=True)
+            network.loop()            # flush "0" before OTA blocks the loop
             controller._set_pump(False, reason="OTA update starting", urgent=True)
             gc.collect()              # free as much RAM as possible before download
             check_for_update()

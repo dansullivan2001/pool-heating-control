@@ -1,5 +1,5 @@
 # controller/controller.py
-__version__ = "0.9.4"
+__version__ = "0.9.5"
 
 import time
 import json
@@ -303,7 +303,12 @@ class Controller:
 
     def _check_publish(self, now):
         """Periodic full-state publish on interval."""
-        if (now - self._last_publish) >= self.config["publish_interval"]:
+        t = time.localtime()
+        start_h = self.config.get("core_start_hour", 8)
+        end_h = self.config.get("core_end_hour", 18)
+        in_core = start_h <= t[3] < end_h
+        interval = self.config["publish_interval"] if in_core else self.config["publish_interval_off_hours"]
+        if (now - self._last_publish) >= interval:
             self.publish_state(force_all=True)
             self._last_publish = now
 

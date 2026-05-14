@@ -1,5 +1,5 @@
 # config.py
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 CONFIG = {
     # --- Pump timing ---
@@ -23,7 +23,8 @@ CONFIG = {
     "max_enclosure_temp":      55,   # °C — pump stops above this
 
     # --- Network ---
-    "publish_interval":        30,   # seconds between full state publishes
+    "publish_interval":        30,   # seconds between full state publishes (core hours)
+    "publish_interval_off_hours": 300,  # seconds between full state publishes (outside core hours)
     "mqtt_watchdog_interval":  60,   # seconds before MQTT watchdog fires
 }
 

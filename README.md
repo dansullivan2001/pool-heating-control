@@ -19,7 +19,13 @@ Before any pump decision is made, the following are checked in order. The first 
 
 ### Cloud connectivity
 
-State is published to [Adafruit IO](https://io.adafruit.com) via MQTT every 30 seconds (and immediately on any safety-critical change). The MQTT watchdog triggers a full device restart after a sustained outage, ensuring the Pico recovers from network failures automatically.
+State is published to [Adafruit IO](https://io.adafruit.com) via MQTT every 30 seconds during core hours and every 5 minutes outside them (and immediately on any safety-critical change). The pump is turned off before the watchdog restart so the pool is always left safe. Three control modes are available via the MQTT dashboard:
+
+| Mode | Meaning |
+|---|---|
+| `0` | Auto — cancel holiday mode; normal solar logic resumes |
+| `1` | Manual boost — runs pump for `manual_override_duration` seconds |
+| `2` | Holiday mode — system stays off until mode `0` is received |
 
 ### OTA updates
 
@@ -32,9 +38,9 @@ Firmware updates are triggered by an MQTT command. The Pico downloads changed fi
 | Component | GPIO Pin |
 |---|---|
 | DS18x20 temperature sensors (1-Wire bus) | 0 |
-| Pump relay | 5 |
-| Status LED | 6 |
-| Manual boost button | 10 |
+| Pump relay | 16 |
+| Status LED | `"LED"` (Pico W onboard LED) |
+| Manual boost button | 3 |
 | Water level sensor | 14 |
 
 **Sensors (DS18x20 ROM addresses → labels):**
@@ -57,16 +63,16 @@ main.py                  # Boot sequence and main loop
 config.py                # Thresholds, GPIO pins, sensor ROM map
 state.py                 # Shared runtime state (single source of truth)
 ota.py                   # OTA update and rollback logic
-manifest.json            # OTA manifest — lists expected version of each file
+manifest.json            # OTA manifest — lists expected version and base URL
 secrets.template.py      # Template for secrets.py (see below)
 status_led.py            # Non-blocking status LED pattern player
 utils.py                 # Shared utilities
 
 controller/
-  controller.py          # Safety chain and pump control logic
+  controller.py          # Safety chain, pump control logic, MQTT command handler
 
 net/
-  __init__.py            # Network aggregator (WiFi + MQTT)
+  __init__.py            # Network aggregator (WiFi + MQTT + pre_restart_hook)
   mqtt.py                # MQTT manager with publish queue and watchdog
   wifi.py                # WiFi manager
   feeds.py               # Adafruit IO feed definitions

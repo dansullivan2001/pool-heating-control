@@ -30,11 +30,12 @@ A single module-level `state` dict is the sole source of truth at runtime. All k
 
 ### Boot sequence (`main.py`)
 1. `ota.verify_or_rollback()` — runs before all other imports; rolls back to `.bak` files and reboots if any critical file is corrupt
-2. Sensor initialisation + first reads (so state is populated before the first controller loop)
-3. `Network.connect()` — blocking WiFi + MQTT connect
-4. NTP sync (sets Pico RTC to UK local time for correct core-hours comparisons)
-5. `Controller` construction
-6. Main loop: sensor reads every 2 s → `network.loop()` → OTA check (if flagged) → `controller.loop()` → `gc.collect()`
+2. Read `manifest.json` → `state["fw_version"]` (the bundle version string published to the debug feed)
+3. Sensor initialisation + first reads (so state is populated before the first controller loop)
+4. `Network.connect()` — blocking WiFi + MQTT connect
+5. NTP sync (sets Pico RTC to UK local time for correct core-hours comparisons)
+6. `Controller` construction; `network.pre_restart_hook` wired up to turn the pump off before any watchdog restart
+7. Main loop: sensor reads every 2 s → daily NTP resync at 03:00 → `network.loop()` → OTA check (if flagged) → `controller.loop()` → `status_led.update()` → `gc.collect()`
 
 ### Controller safety chain (`controller/controller.py`)
 `_run_safety_chain()` evaluates conditions in strict priority order. The first failing condition forces the pump off and short-circuits all remaining logic:
@@ -50,13 +51,14 @@ If the chain passes, `_run_control_logic()` runs:
 - Solar delta hysteresis: pump ON when `delta >= delta_threshold_high`, OFF when `delta < delta_threshold_low`
 - Periodic test run every `pump_test_interval` seconds — forces circulation so stagnant sensor readings refresh
 
-### Network layer (`network/`)
+### Network layer (`net/`)
 - `Network` aggregates `WiFiManager`, `MQTTManager`, and `Feeds`
 - Publishing is done exclusively by `Controller.publish_state()` — the Network layer never publishes on its own
 - `MQTTManager.publish()` has a per-topic rate limit (10 s); `urgent=True` bypasses it for safety-critical state changes
 - Offline messages are queued (bounded at 20) and flushed on reconnect
-- MQTT watchdog triggers `machine.reset()` after a sustained outage (`watchdog_interval × 3` seconds)
+- MQTT watchdog triggers `machine.reset()` after a sustained outage (`watchdog_interval × 3` seconds); `network.pre_restart_hook` (set by `main.py`) turns the pump off before reset
 - `message_handler` is set on the `MQTTManager` by the Controller after construction — not at `Network.__init__` time
+- Incoming MQTT mode values: `0` = auto (cancel holiday), `1` = timed boost, `2` = holiday mode
 
 ### Sensor layer (`sensors/`)
 - `TemperatureSensor` is non-blocking: `read()` starts a DS18x20 conversion on one call and returns results on the next (≥750 ms later), avoiding a blocking 750 ms delay in the main loop
@@ -76,9 +78,9 @@ Non-blocking pattern player. Priority order: `critical` → `sensor_missing` →
 
 ## Key configuration
 
-- **`config.py`**: `CONFIG` dict (thresholds, timers, MQTT intervals), GPIO pin assignments, `rom_to_label` sensor map
+- **`config.py`**: `CONFIG` dict (thresholds, timers, MQTT intervals), GPIO pin assignments, `rom_to_label` sensor map. Notable: `publish_interval` (30 s, core hours) vs `publish_interval_off_hours` (300 s, overnight) to reduce MQTT traffic.
 - **`secrets.py`**: `WIFI_SSID`, `WIFI_PASSWORD`, `AIO_USERNAME`, `AIO_KEY`, `OTA_MANIFEST_URL` — not committed to git
-- **`manifest.json`**: OTA manifest — update `base_url` to point to the real GitHub raw URL before deploying OTA
+- **`manifest.json`**: OTA manifest — lists the expected `version` string for the bundle and `base_url` pointing to GitHub raw. `state["fw_version"]` is populated from `manifest.json` at boot and included in every debug feed publish.
 
 ## Dual-platform pattern
 
@@ -93,4 +95,4 @@ except ImportError:
     from mocks.mock_hardware import MockPin as Pin, ...
 ```
 
-The same pattern applies in `network/mqtt.py` (`umqtt` vs `paho`), `ntp.py` (`ntptime` vs no-op), and `status_led.py` (`machine.Pin` vs `MockPin`). When adding new hardware-dependent code, always follow this pattern to keep the desktop simulation working.
+The same pattern applies in `net/mqtt.py` (`umqtt` vs `paho`), `net/ntp.py` (`ntptime` vs no-op), and `status_led.py` (`machine.Pin` vs `MockPin`). When adding new hardware-dependent code, always follow this pattern to keep the desktop simulation working.

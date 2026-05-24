@@ -1,5 +1,5 @@
 # controller/controller.py
-__version__ = "0.9.5"
+__version__ = "0.9.6"
 
 import time
 import json
@@ -217,7 +217,7 @@ class Controller:
 
         if flow is not None and ret is not None:
             delta = ret - flow
-            self.state["delta_t"] = round(delta, 2)  # stored for debug feed
+            self.state["delta_t_flow_return"] = round(delta, 2)
             high_thresh = self.config.get("delta_threshold_high", 0.5)
             low_thresh = self.config.get("delta_threshold_low", 0.1)
 
@@ -234,9 +234,16 @@ class Controller:
                 # Pump is off, delta not yet high enough — keep off
                 auto_reason = f"waiting for solar gain ({delta:.1f}C)"
         else:
-            self.state["delta_t"] = None
+            self.state["delta_t_flow_return"] = None
             auto_wants_pump = False
             auto_reason = "flow/return sensor missing"
+
+        plate = temps.get("tSolarPlate")
+        ref   = temps.get("tSolarRef")
+        if plate is not None and ref is not None:
+            self.state["delta_irradiance"] = round(plate - ref, 2)
+        else:
+            self.state["delta_irradiance"] = None
 
         # --- Periodic test run ---
         # WHY: tFlow and tReturn only reflect actual roof conditions when water
@@ -333,12 +340,12 @@ class Controller:
         if force_all:
             for label, value in self.state["temps"].items():
                 topic = getattr(feeds, label, None)
-                if topic is None:
-                    print(f"⚠️ No feed configured for sensor '{label}'")
-                elif value is not None:
+                if topic is not None and value is not None:
                     self.mqtt.publish(topic, value)
-            if self.state["delta_t"] is not None:
-                self.mqtt.publish(feeds.delta_t, self.state["delta_t"])
+            if self.state["delta_t_flow_return"] is not None:
+                self.mqtt.publish(feeds.delta_t_flow_return, self.state["delta_t_flow_return"])
+            if self.state["delta_irradiance"] is not None:
+                self.mqtt.publish(feeds.delta_irradiance, self.state["delta_irradiance"])
 
         # Derived fields
         t = time.localtime(now)
@@ -357,7 +364,8 @@ class Controller:
             "pump_on":                  self.state["pump_on"],
             "pump_reason":              self.state["pump_reason"],
             "pump_runtime_s":           pump_runtime_s,
-            "delta_t":                  self.state["delta_t"],
+            "delta_t_flow_return":       self.state["delta_t_flow_return"],
+            "delta_irradiance":         self.state["delta_irradiance"],
             "temps":                    self.state["temps"],
             "local_time":               local_time,
             "in_core_hours":            in_core_hours,

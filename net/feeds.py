@@ -1,5 +1,5 @@
 # network/feeds.py
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 class Feeds:
     """
@@ -18,13 +18,13 @@ class Feeds:
             "ota_trigger":      f"{username}/feeds/ota_trigger",
 
             # --- Outbound (published — controller sends these) ---
-            "pump_state":       f"{username}/feeds/pump_state",
-            "tAmbient":         f"{username}/feeds/tAmbient",
-            "tEnclosure":       f"{username}/feeds/tEnclosure",
-            "tFlow":            f"{username}/feeds/tFlow",
-            "tReturn":          f"{username}/feeds/tReturn",
-            "delta_t":          f"{username}/feeds/delta_temp",
-            "debug":            f"{username}/feeds/debug",
+            "pump_state":            f"{username}/feeds/pump_state",
+            "tAmbient":              f"{username}/feeds/tAmbient",
+            "tFlow":                 f"{username}/feeds/tFlow",
+            "tReturn":               f"{username}/feeds/tReturn",
+            "delta_t_flow_return":   f"{username}/feeds/delta-t-flow-return",
+            "delta_irradiance":      f"{username}/feeds/delta-irradiance",
+            "debug":                 f"{username}/feeds/debug",
         }
 
     def control_topics(self):

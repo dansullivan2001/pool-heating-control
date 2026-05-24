@@ -1,5 +1,5 @@
 # state.py
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 # Central shared state dictionary for the whole controller.
 # ALL keys used anywhere in the codebase must be declared here with safe defaults.
 # Rule: safety-critical booleans default to the SAFE (restrictive) value.
@@ -18,7 +18,8 @@ state = {
     "time_to_next_test":    0,      # seconds until next test (computed each loop)
 
     # --- Computed values ---
-    "delta_t":              None,   # tReturn - tFlow (°C), computed each loop
+    "delta_t_flow_return":  None,   # tReturn - tFlow (°C), computed each loop
+    "delta_irradiance":     None,   # tSolarPlate - tSolarRef (°C), computed each loop
 
     # --- Sensors ---
     # SAFETY: default False/empty so system starts in a safe inhibited state

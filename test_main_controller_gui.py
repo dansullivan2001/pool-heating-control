@@ -89,12 +89,14 @@ temperature_sensor.roms = temperature_sensor.ds_sensor.scan()
 # Route water level reads through the GUI checkbox
 water_level_sensor.pin.gui = gui
 
-# Fake ROMs: one unknown (tests the "unknown ROM" warning path) + three real
+# Fake ROMs: one unknown (tests the "unknown ROM" warning path) + real sensors
 gui.fake_roms = [
     "11111111111111",        # unknown — not in rom_to_label
     "28206f87007e6fc7",      # tAmbient
     "2874c18700153578",      # tFlow
     "28ee28e31216013e",      # tEnclosure
+    "PLACEHOLDER_SOLAR_PLATE",  # tSolarPlate — replace with real ROM once wired
+    "PLACEHOLDER_SOLAR_REF",    # tSolarRef   — replace with real ROM once wired
 ]
 
 def _on_fake_roms_toggle(*_):

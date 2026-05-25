@@ -1,5 +1,5 @@
 # config.py
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 CONFIG = {
     # --- Pump timing ---
@@ -44,11 +44,9 @@ PIN_TEMPS       = 0
 # -------------------------------------------------------------------------
 rom_to_label = {
     "28d2908700370520": "tReturn",
-#   "28e7688700c21d87": "tReturnTest",
     "28206f87007e6fc7": "tAmbient",
     "2874c18700153578": "tFlow",
-#   "2812358700210518": "tFlowTest",
     "28ee28e31216013e": "tEnclosure",
-    "PLACEHOLDER_SOLAR_PLATE": "tSolarPlate",   # replace with real ROM once wired
-    "PLACEHOLDER_SOLAR_REF":   "tSolarRef",     # replace with real ROM once wired
+    "2812358700210518": "tSolarPlate",
+    "28e7688700c21d87": "tSolarRef",
 }

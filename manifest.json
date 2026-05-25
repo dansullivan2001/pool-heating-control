@@ -1,10 +1,10 @@
 {
-  "version": "1.2.2",
+  "version": "1.2.3",
   "base_url": "https://raw.githubusercontent.com/dansullivan2001/pool-heating-control/main",
   "files": {
     "main.py":                    "0.9.5",
     "state.py":                   "0.3.2",
-    "config.py":                  "0.1.3",
+    "config.py":                  "0.1.4",
     "ota.py":                     "0.1.2",
     "net/ntp.py":                 "0.1.0",
     "status_led.py":              "0.2.0",

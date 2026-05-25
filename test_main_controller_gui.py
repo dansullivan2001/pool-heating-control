@@ -95,8 +95,8 @@ gui.fake_roms = [
     "28206f87007e6fc7",      # tAmbient
     "2874c18700153578",      # tFlow
     "28ee28e31216013e",      # tEnclosure
-    "PLACEHOLDER_SOLAR_PLATE",  # tSolarPlate — replace with real ROM once wired
-    "PLACEHOLDER_SOLAR_REF",    # tSolarRef   — replace with real ROM once wired
+    "2812358700210518",          # tSolarPlate
+    "28e7688700c21d87",          # tSolarRef
 ]
 
 def _on_fake_roms_toggle(*_):

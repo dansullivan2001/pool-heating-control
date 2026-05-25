@@ -1,5 +1,5 @@
 {
-  "version": "1.2.3",
+  "version": "1.2.4",
   "base_url": "https://raw.githubusercontent.com/dansullivan2001/pool-heating-control/main",
   "files": {
     "main.py":                    "0.9.5",
@@ -9,7 +9,7 @@
     "net/ntp.py":                 "0.1.0",
     "status_led.py":              "0.2.0",
     "utils.py":                   "0.1.1",
-    "controller/controller.py":   "0.9.6",
+    "controller/controller.py":   "0.9.7",
     "sensors/__init__.py":        "0.1.0",
     "sensors/temperature.py":     "0.1.0",
     "sensors/water_level.py":     "0.1.1",

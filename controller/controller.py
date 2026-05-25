@@ -1,5 +1,5 @@
 # controller/controller.py
-__version__ = "0.9.6"
+__version__ = "0.9.7"
 
 import time
 import json
@@ -62,6 +62,12 @@ class Controller:
 
         # 1. Read local button (if sensors available)
         self._check_local_button(now)
+
+        # 2. Solar irradiance delta — weather data, not gated by core hours or safety
+        temps = self.state.get("temps", {})
+        plate = temps.get("tSolarPlate")
+        ref   = temps.get("tSolarRef")
+        self.state["delta_irradiance"] = round(plate - ref, 2) if plate is not None and ref is not None else None
 
         # 3. Safety chain — sets safety_stop=True and returns early if unsafe
         safety_stop, enclosure_missing = self._run_safety_chain()
@@ -237,13 +243,6 @@ class Controller:
             self.state["delta_t_flow_return"] = None
             auto_wants_pump = False
             auto_reason = "flow/return sensor missing"
-
-        plate = temps.get("tSolarPlate")
-        ref   = temps.get("tSolarRef")
-        if plate is not None and ref is not None:
-            self.state["delta_irradiance"] = round(plate - ref, 2)
-        else:
-            self.state["delta_irradiance"] = None
 
         # --- Periodic test run ---
         # WHY: tFlow and tReturn only reflect actual roof conditions when water

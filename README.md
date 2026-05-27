@@ -8,6 +8,8 @@ MicroPython firmware for a Raspberry Pi Pico W that controls a solar pool heatin
 
 The pump runs when the difference between the solar panel return temperature and the flow temperature (`tReturn − tFlow`) exceeds a threshold, indicating the panels are hot enough to be worth circulating water through. A hysteresis band prevents rapid on/off cycling. The pump is restricted to configurable core hours (default 08:00–18:00) and can be manually boosted via a physical button or an MQTT command.
 
+A second differential, `delta_irradiance` (`tSolarPlate − tSolarRef`), is computed every loop and published to MQTT as a proxy for solar panel output. It is a monitoring metric only — it does not gate the pump.
+
 ### Safety chain
 
 Before any pump decision is made, the following are checked in order. The first failure stops the pump immediately:
@@ -51,6 +53,8 @@ Firmware updates are triggered by an MQTT command. The Pico downloads changed fi
 | `tReturn` | Solar panel return pipe |
 | `tAmbient` | Ambient air temperature |
 | `tEnclosure` | Controller enclosure temperature |
+| `tSolarPlate` | Solar panel surface (used for `delta_irradiance`) |
+| `tSolarRef` | Ambient reference near panel (used for `delta_irradiance`) |
 
 ROM addresses are mapped to labels in `config.py` (`rom_to_label`). Update this dict if a sensor is replaced.
 
@@ -85,6 +89,7 @@ sensors/
   button.py              # Debounced manual boost button
 
 mocks/                   # Desktop mock hardware (used by simulation only)
+typings/                 # MicroPython stub files for IDE type checking (not deployed)
 test_main_controller_gui.py  # Tkinter desktop simulation harness
 ```
 

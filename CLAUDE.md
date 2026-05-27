@@ -38,18 +38,20 @@ A single module-level `state` dict is the sole source of truth at runtime. All k
 7. Main loop: sensor reads every 2 s → daily NTP resync at 03:00 → `network.loop()` → OTA check (if flagged) → `controller.loop()` → `status_led.update()` → `gc.collect()`
 
 ### Controller safety chain (`controller/controller.py`)
-`_run_safety_chain()` evaluates conditions in strict priority order. The first failing condition forces the pump off and short-circuits all remaining logic:
+Each call to `controller.loop()` runs in this order:
 
-1. Water level — dry-run protect (fail-safe: pump off if level sensor absent or low)
-2. Enclosure sensor missing — can't verify electronics are safe
-3. Enclosure overtemp — `tEnclosure > config["max_enclosure_temp"]`
-4. Flow/Return sensors missing — can't compute solar delta
-
-If the chain passes, `_run_control_logic()` runs:
-- Manual boost (button or MQTT mode 1) — timed, overrides night/holiday
-- Night / holiday gate (outside `core_start_hour`–`core_end_hour`, or `manual_disabled`)
-- Solar delta hysteresis: pump ON when `delta >= delta_threshold_high`, OFF when `delta < delta_threshold_low`
-- Periodic test run every `pump_test_interval` seconds — forces circulation so stagnant sensor readings refresh
+1. **Local button check** — triggers manual boost if pressed
+2. **`delta_irradiance` computation** — `tSolarPlate − tSolarRef` written to `state["delta_irradiance"]` and published; this runs before the safety chain and is always computed regardless of safety state (it is a monitoring metric, not a pump gate)
+3. **`_run_safety_chain()`** — evaluates conditions in strict priority order; first failure forces the pump off and short-circuits all remaining logic:
+   1. Water level — dry-run protect (fail-safe: pump off if level sensor absent or low)
+   2. Enclosure sensor missing — can't verify electronics are safe
+   3. Enclosure overtemp — `tEnclosure > config["max_enclosure_temp"]`
+   4. Flow/Return sensors missing — can't compute solar delta
+4. **`_run_control_logic()`** — only reached if safety chain passes:
+   - Manual boost (button or MQTT mode 1) — timed, overrides night/holiday
+   - Night / holiday gate (outside `core_start_hour`–`core_end_hour`, or `manual_disabled`)
+   - Solar delta hysteresis: pump ON when `delta >= delta_threshold_high`, OFF when `delta < delta_threshold_low`
+   - Periodic test run every `pump_test_interval` seconds — forces circulation so stagnant sensor readings refresh
 
 ### Network layer (`net/`)
 - `Network` aggregates `WiFiManager`, `MQTTManager`, and `Feeds`
@@ -62,8 +64,9 @@ If the chain passes, `_run_control_logic()` runs:
 
 ### Sensor layer (`sensors/`)
 - `TemperatureSensor` is non-blocking: `read()` starts a DS18x20 conversion on one call and returns results on the next (≥750 ms later), avoiding a blocking 750 ms delay in the main loop
-- ROM → label mapping lives in `config.rom_to_label`; adding a sensor = add one entry there
+- ROM → label mapping lives in `config.rom_to_label`; adding a sensor = add one entry there. Current labels: `tFlow`, `tReturn`, `tAmbient`, `tEnclosure`, `tSolarPlate`, `tSolarRef`
 - `WaterLevelSensor` and `Button` are simple digital reads
+- `tSolarPlate` and `tSolarRef` feed `delta_irradiance` (a solar irradiance proxy); they are not used by the pump safety chain or heating logic
 
 ### OTA (`ota.py`)
 Triggered by MQTT → `state["ota_pending"] = True`. Downloads changed files to `.new`, verifies syntax, then atomically renames: existing → `.bak`, `.new` → active. `ota.py` itself is applied last. On next boot `verify_or_rollback()` checks CRITICAL_FILES; if any fail, `.bak` files are restored and the Pico reboots.

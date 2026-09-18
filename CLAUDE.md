@@ -41,7 +41,7 @@ A single module-level `state` dict is the sole source of truth at runtime. All k
 Each call to `controller.loop()` runs in this order:
 
 1. **Local button check** — triggers manual boost if pressed
-2. **`delta_irradiance` computation** — `tSolarPlate − tSolarRef` written to `state["delta_irradiance"]` and published; this runs before the safety chain and is always computed regardless of safety state (it is a monitoring metric, not a pump gate)
+2. **Delta computation** — all three deltas (`delta_t_flow_return` = `tReturn − tFlow`, `delta_irradiance` = `tSolarPlate − tSolarRef`, `plate_pool_delta` = `tSolarPlate − tFlow`) are written to `state` here, before the safety chain and outside the core-hours gate, so they are always fresh and appear in every debug payload including overnight. `_run_control_logic` reads `state["delta_t_flow_return"]` back rather than recomputing, so the published value and the value the heating decision used cannot diverge
 3. **`_run_safety_chain()`** — evaluates conditions in strict priority order; first failure forces the pump off and short-circuits all remaining logic:
    1. Water level — dry-run protect (fail-safe: pump off if level sensor absent or low)
    2. Enclosure sensor missing — can't verify electronics are safe
@@ -49,7 +49,7 @@ Each call to `controller.loop()` runs in this order:
    4. Flow/Return sensors missing — can't compute solar delta
 4. **`_run_control_logic()`** — only reached if safety chain passes:
    - Manual boost (button or MQTT mode 1) — timed, overrides night/holiday
-   - Night / holiday gate (outside `core_start_hour`–`core_end_hour`, or `manual_disabled`)
+   - Night / holiday gate (outside `core_start_hour`–`core_end_hour`, or `manual_disabled`) — also holds the test timer at `now`, so both `pump_test_interval` and `gate_fallback_interval` count from the start of core hours rather than carrying over from the previous evening
    - Solar delta hysteresis: pump ON when `delta >= delta_threshold_high`, OFF when `delta < delta_threshold_low`
    - Periodic test run every `pump_test_interval` seconds — forces circulation so stagnant sensor readings refresh. Gated on `plate_pool_delta` (`tSolarPlate − tFlow`): the test is skipped unless the plate is at least `gate_threshold` warmer than the water, since a colder plate predicts the test will end with the pump switching straight back off. Fail-safe — a missing `tSolarPlate`/`tFlow`, or `gate_enabled: False`, opens the gate and restores timer-only behaviour; `gate_fallback_interval` forces a test regardless once the circuit has been stagnant that long. The gate only ever delays a test, never heating.
 

@@ -1,5 +1,5 @@
 # controller/controller.py
-__version__ = "0.9.8"
+__version__ = "0.9.9"
 
 import time
 import json
@@ -67,7 +67,13 @@ class Controller:
         plate = temps.get("tSolarPlate")
         ref   = temps.get("tSolarRef")
         flow  = temps.get("tFlow")
+        ret   = temps.get("tReturn")
         self.state["delta_irradiance"] = round(plate - ref, 2) if plate is not None and ref is not None else None
+
+        # Solar gain delta. Computed here rather than inside the core-hours
+        # branch so it is logged overnight too, and so the value published is
+        # always the exact value the heating decision was made on.
+        self.state["delta_t_flow_return"] = round(ret - flow, 2) if ret is not None and flow is not None else None
 
         # Gate signal for the periodic test. Only meaningful as a gate with the
         # pump off — which is the only time it is evaluated, since the test timer
@@ -212,22 +218,27 @@ class Controller:
         # --- Night / holiday shutdown ---
         if not is_core_hours or is_holiday:
             self.state["test_running"] = False
+            # Hold the test timer at 'now' while shut down, so both the test
+            # interval and the gate fallback start counting from the beginning
+            # of core hours. Without this, _last_test would still hold last
+            # night's value by morning and the gate fallback would force an
+            # ungated test on the first tick of the day — exactly when a cold
+            # panel means the gate is most likely to be right.
+            self._reset_test_timer(now)
             reason = "holiday mode" if is_holiday else f"sleep (hour {current_hour})"
             self._set_pump(False, reason=reason)
             return
 
         # --- Within core hours: solar delta logic ---
-        temps = self.state.get("temps", {})
-        flow = temps.get("tFlow")
-        ret = temps.get("tReturn")
+        # Already computed once per loop in loop(); read it back rather than
+        # recomputing so the decision and the published value cannot diverge.
+        delta = self.state["delta_t_flow_return"]
 
         # Hysteresis: start from current pump state to avoid rapid cycling
         auto_wants_pump = self.state["pump_on"]
         auto_reason = self.state.get("pump_reason", "")
 
-        if flow is not None and ret is not None:
-            delta = ret - flow
-            self.state["delta_t_flow_return"] = round(delta, 2)
+        if delta is not None:
             high_thresh = self.config.get("delta_threshold_high", 0.5)
             low_thresh = self.config.get("delta_threshold_low", 0.1)
 
@@ -244,7 +255,8 @@ class Controller:
                 # Pump is off, delta not yet high enough — keep off
                 auto_reason = f"waiting for solar gain ({delta:.1f}C)"
         else:
-            self.state["delta_t_flow_return"] = None
+            # Defensive: the safety chain already stops the pump when either
+            # sensor is missing, so this is not normally reachable.
             auto_wants_pump = False
             auto_reason = "flow/return sensor missing"
 

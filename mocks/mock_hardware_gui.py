@@ -1,5 +1,5 @@
 # mocks/mock_hardware_gui.py
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 import tkinter as tk
 from config import rom_to_label
@@ -187,10 +187,15 @@ class MockHardwareGUI:
         # (so it unchecks itself when boost timer expires)
         self.button_var.set(s.get("manual_override", False))
 
-        # Next test countdown
+        # Next test countdown, annotated with the irradiance gate so a countdown
+        # sitting at 00:00 with no test running is self-explanatory.
         t_next = s.get("time_to_next_test", 0)
         mins, secs = divmod(int(max(t_next, 0)), 60)
-        self.next_test_var.set(f"Next test: {mins:02d}:{secs:02d}")
+        gate_txt = ""
+        if not s.get("test_gate_open", True):
+            delta = s.get("plate_pool_delta")
+            gate_txt = " — gated" if delta is None else f" — gated ({delta:.1f}C)"
+        self.next_test_var.set(f"Next test: {mins:02d}:{secs:02d}{gate_txt}")
 
         # LED pattern name — use StatusLED directly if bound, else read from state
         if hasattr(self, "_status_led"):

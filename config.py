@@ -1,11 +1,23 @@
 # config.py
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 CONFIG = {
     # --- Pump timing ---
     "pump_test_interval":     600,   # seconds between periodic test runs
     "pump_test_duration":      90,   # seconds each test run lasts
     "manual_override_duration": 90,  # seconds a manual boost lasts
+
+    # --- Periodic test irradiance gate ---
+    # Before a scheduled test, compare the solar plate against the (stagnant)
+    # flow sensor. If the plate isn't meaningfully warmer than the water sitting
+    # in the circuit, the test would almost certainly end with the pump switching
+    # straight back off, so skip it and save the run. Threshold derived
+    # empirically from logged test outcomes.
+    # FAIL-SAFE: if either sensor is unavailable the gate is treated as open,
+    # i.e. behaviour reverts to the timer-only test schedule.
+    "gate_enabled":          True,   # kill switch — False restores timer-only tests
+    "gate_threshold":         0.5,   # °C — tSolarPlate must exceed tFlow by this
+    "gate_fallback_interval": 3600,  # seconds — force a test after this long regardless
 
     # --- Solar delta thresholds ---
     # Pump turns ON  when (tReturn - tFlow) >= delta_threshold_high

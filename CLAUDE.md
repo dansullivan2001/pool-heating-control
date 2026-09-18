@@ -51,7 +51,7 @@ Each call to `controller.loop()` runs in this order:
    - Manual boost (button or MQTT mode 1) — timed, overrides night/holiday
    - Night / holiday gate (outside `core_start_hour`–`core_end_hour`, or `manual_disabled`)
    - Solar delta hysteresis: pump ON when `delta >= delta_threshold_high`, OFF when `delta < delta_threshold_low`
-   - Periodic test run every `pump_test_interval` seconds — forces circulation so stagnant sensor readings refresh
+   - Periodic test run every `pump_test_interval` seconds — forces circulation so stagnant sensor readings refresh. Gated on `plate_pool_delta` (`tSolarPlate − tFlow`): the test is skipped unless the plate is at least `gate_threshold` warmer than the water, since a colder plate predicts the test will end with the pump switching straight back off. Fail-safe — a missing `tSolarPlate`/`tFlow`, or `gate_enabled: False`, opens the gate and restores timer-only behaviour; `gate_fallback_interval` forces a test regardless once the circuit has been stagnant that long. The gate only ever delays a test, never heating.
 
 ### Network layer (`net/`)
 - `Network` aggregates `WiFiManager`, `MQTTManager`, and `Feeds`
@@ -66,7 +66,8 @@ Each call to `controller.loop()` runs in this order:
 - `TemperatureSensor` is non-blocking: `read()` starts a DS18x20 conversion on one call and returns results on the next (≥750 ms later), avoiding a blocking 750 ms delay in the main loop
 - ROM → label mapping lives in `config.rom_to_label`; adding a sensor = add one entry there. Current labels: `tFlow`, `tReturn`, `tAmbient`, `tEnclosure`, `tSolarPlate`, `tSolarRef`
 - `WaterLevelSensor` and `Button` are simple digital reads
-- `tSolarPlate` and `tSolarRef` feed `delta_irradiance` (a solar irradiance proxy); they are not used by the pump safety chain or heating logic
+- `tSolarPlate` and `tSolarRef` feed `delta_irradiance` (a solar irradiance proxy); `tSolarPlate` and `tFlow` feed `plate_pool_delta`, which gates the periodic test. Neither is used by the pump safety chain or the heating decision itself
+- There is **no staleness tracking**: a sensor lost mid-run keeps its last value in `state["temps"]` (the ROM list is scanned once at boot and `read()` merges rather than replaces), so "unavailable" means a `None` value from a failed `read_temp`, not a missing key
 
 ### OTA (`ota.py`)
 Triggered by MQTT → `state["ota_pending"] = True`. Downloads changed files to `.new`, verifies syntax, then atomically renames: existing → `.bak`, `.new` → active. `ota.py` itself is applied last. On next boot `verify_or_rollback()` checks CRITICAL_FILES; if any fail, `.bak` files are restored and the Pico reboots.

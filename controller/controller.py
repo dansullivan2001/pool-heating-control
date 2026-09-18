@@ -1,5 +1,5 @@
 # controller/controller.py
-__version__ = "0.9.7"
+__version__ = "0.9.8"
 
 import time
 import json
@@ -42,11 +42,10 @@ class Controller:
         self._manual_override_start = None
         self._test_start_time = None
         self._pump_on_since = None
+        self._skip_logged = False   # one gate-skip record per stagnation period
 
         # Initialise test timer to now so we don't immediately test on boot
-        now = time.time()
-        self._last_test = now
-        self.state["last_test_ts"] = now
+        self._reset_test_timer(time.time())
         self.state["time_to_next_test"] = self.config.get("pump_test_interval", 600)
 
     # -------------------------------------------------------------------------
@@ -63,11 +62,18 @@ class Controller:
         # 1. Read local button (if sensors available)
         self._check_local_button(now)
 
-        # 2. Solar irradiance delta — weather data, not gated by core hours or safety
+        # 2. Monitoring deltas — weather data, not gated by core hours or safety
         temps = self.state.get("temps", {})
         plate = temps.get("tSolarPlate")
         ref   = temps.get("tSolarRef")
+        flow  = temps.get("tFlow")
         self.state["delta_irradiance"] = round(plate - ref, 2) if plate is not None and ref is not None else None
+
+        # Gate signal for the periodic test. Only meaningful as a gate with the
+        # pump off — which is the only time it is evaluated, since the test timer
+        # freezes while the pump runs — but computed every loop so the threshold
+        # can be verified against the logs.
+        self.state["plate_pool_delta"] = round(plate - flow, 2) if plate is not None and flow is not None else None
 
         # 3. Safety chain — sets safety_stop=True and returns early if unsafe
         safety_stop, enclosure_missing = self._run_safety_chain()
@@ -181,8 +187,7 @@ class Controller:
         # already circulating so no test is needed until the pump goes idle.
         test_int = self.config.get("pump_test_interval", 600)
         if self.state["pump_on"] and not self.state["test_running"]:
-            self._last_test = now
-            self.state["last_test_ts"] = now
+            self._reset_test_timer(now)
         self.state["time_to_next_test"] = max(0, test_int - (now - self._last_test))
 
         # --- Manual boost (works outside core hours, but not during safety stop) ---
@@ -190,8 +195,7 @@ class Controller:
             if self._manual_override_start is None:
                 self._manual_override_start = now
                 # Reset test timer so a test doesn't immediately follow a boost
-                self._last_test = now
-                self.state["last_test_ts"] = now
+                self._reset_test_timer(now)
 
             elapsed = now - self._manual_override_start
             duration = self.config.get("manual_override_duration", 90)
@@ -251,14 +255,39 @@ class Controller:
         # test_int seconds forces circulation so the readings update and the
         # solar delta logic can make a correct heating decision.
         # test_dur must be long enough for readings to stabilise (default 90 s).
+        #
+        # The test is additionally gated on solar irradiance — see
+        # _test_gate_open(). A test whose delta was never going to clear the
+        # threshold just wastes a 90 s pump run, and the plate-vs-water delta
+        # predicts that outcome. The gate only ever delays a test; the fallback
+        # interval guarantees one eventually, and a sensor fault opens the gate.
         test_dur = self.config.get("pump_test_duration", 90)
+        skip_reason = None
 
         if not self.state["test_running"] and (now - self._last_test) >= test_int:
-            print("🧪 Starting periodic test")
-            self.state["test_running"] = True
-            self._test_start_time = now
-            # _last_test is reset when the test *finishes*, not when it starts,
-            # so test_int measures the gap between end of one test and start of next.
+            gate_open, gate_delta = self._test_gate_open()
+            self.state["test_gate_open"] = gate_open
+
+            # Never let the gate hold off a test indefinitely. Once the circuit
+            # has been stagnant this long the readings are worthless whatever
+            # the plate says, so test regardless of the gate.
+            fallback = self.config.get("gate_fallback_interval", 3600)
+            forced = (now - self._last_test) >= fallback
+
+            if gate_open or forced:
+                print("🧪 Starting periodic test" + ("" if gate_open else " (gate fallback)"))
+                self.state["test_running"] = True
+                self._test_start_time = now
+                self._skip_logged = False
+                # _last_test is reset when the test *finishes*, not when it starts,
+                # so test_int measures the gap between end of one test and start of next.
+            elif not self._skip_logged:
+                # Log one skip per stagnation period rather than per tick. The
+                # gate is re-evaluated every loop once the slot is due, so a test
+                # fires as soon as the plate warms — but plate_pool_delta is in
+                # every debug payload, so the full series is recoverable anyway.
+                self._skip_logged = True
+                skip_reason = "test skipped (gate {:.1f}C)".format(gate_delta)
 
         if self.state["test_running"]:
             if (now - self._test_start_time) < test_dur:
@@ -266,16 +295,46 @@ class Controller:
             else:
                 print("✅ Periodic test finished")
                 self.state["test_running"] = False
-                self._last_test = now
-                self.state["last_test_ts"] = now
+                self._reset_test_timer(now)
                 # Immediately re-evaluate solar logic after test ends
                 self._set_pump(auto_wants_pump, reason=auto_reason)
         else:
-            self._set_pump(auto_wants_pump, reason=auto_reason)
+            self._set_pump(auto_wants_pump, reason=skip_reason or auto_reason)
 
     # -------------------------------------------------------------------------
     # Helpers
     # -------------------------------------------------------------------------
+
+    def _reset_test_timer(self, now):
+        """Restart the periodic-test countdown and re-arm gate-skip logging."""
+        self._last_test = now
+        self.state["last_test_ts"] = now
+        self._skip_logged = False
+
+    def _test_gate_open(self):
+        """
+        Irradiance gate for the periodic test. Returns (open: bool, delta).
+
+        A test only refreshes the flow/return readings usefully if the solar
+        plate is actually warmer than the water sitting in the circuit —
+        otherwise the test ends with the pump switching straight back off,
+        wasting a 90 s run.
+
+        FAIL-SAFE: a missing sensor, or the gate disabled in config, returns
+        True (open), falling back to the timer-only test schedule. A sensor
+        fault must never prevent heating. The safety interlocks are unaffected:
+        they run earlier in the loop and have already stopped the pump before
+        this is ever reached.
+        """
+        if not self.config.get("gate_enabled", True):
+            return True, None
+
+        delta = self.state.get("plate_pool_delta")
+        if delta is None:
+            # tSolarPlate and/or tFlow unavailable — revert to timer-only.
+            return True, None
+
+        return delta >= self.config.get("gate_threshold", 0.5), delta
 
     def _set_pump(self, on: bool, reason: str = "", urgent: bool = False):
         """
@@ -365,6 +424,8 @@ class Controller:
             "pump_runtime_s":           pump_runtime_s,
             "delta_t_flow_return":       self.state["delta_t_flow_return"],
             "delta_irradiance":         self.state["delta_irradiance"],
+            "plate_pool_delta":         self.state["plate_pool_delta"],
+            "test_gate_open":           self.state["test_gate_open"],
             "temps":                    self.state["temps"],
             "local_time":               local_time,
             "in_core_hours":            in_core_hours,

@@ -10,6 +10,8 @@ The pump runs when the difference between the solar panel return temperature and
 
 A second differential, `delta_irradiance` (`tSolarPlate − tSolarRef`), is computed every loop and published to MQTT as a proxy for solar panel output. It is a monitoring metric only — it does not gate the pump.
 
+Because `tFlow` and `tReturn` only reflect real roof conditions while water is moving, the pump runs a short periodic test (default 90 s every 10 minutes) to refresh the readings. A third differential, `plate_pool_delta` (`tSolarPlate − tFlow`), gates those tests: if the panel is not at least `gate_threshold` warmer than the water in the circuit, the test is skipped, because it would almost certainly end with the pump switching straight back off. The gate can only ever delay a test — `gate_fallback_interval` (default 1 hour) forces one regardless, a missing sensor reverts to the timer-only schedule, and `gate_enabled: False` disables it entirely. Heating itself is never gated: if the solar delta clears its threshold the pump runs whatever the gate says.
+
 ### Safety chain
 
 Before any pump decision is made, the following are checked in order. The first failure stops the pump immediately:

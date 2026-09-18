@@ -1,5 +1,5 @@
 # state.py
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 # Central shared state dictionary for the whole controller.
 # ALL keys used anywhere in the codebase must be declared here with safe defaults.
 # Rule: safety-critical booleans default to the SAFE (restrictive) value.
@@ -20,6 +20,10 @@ state = {
     # --- Computed values ---
     "delta_t_flow_return":  None,   # tReturn - tFlow (°C), computed each loop
     "delta_irradiance":     None,   # tSolarPlate - tSolarRef (°C), computed each loop
+    "plate_pool_delta":     None,   # tSolarPlate - tFlow (°C) — periodic-test gate signal
+    "test_gate_open":       True,   # last gate decision. FAIL-SAFE: open = test on timer
+                                    # alone, so the gate can never be the reason
+                                    # heating fails to start.
 
     # --- Sensors ---
     # SAFETY: default False/empty so system starts in a safe inhibited state

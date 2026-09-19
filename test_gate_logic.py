@@ -1,5 +1,5 @@
 # test_gate_logic.py
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 """
 Automated tests for the periodic-test irradiance gate.
@@ -437,3 +437,56 @@ def test_safety_chain_still_wins_over_gate():
     assert state["pump_on"] is False
     assert state["pump_reason"] == "dry run protect"
     assert state["test_running"] is False
+
+
+# -------------------------------------------------------------------------
+# Injected-clock consistency
+# -------------------------------------------------------------------------
+
+def test_injected_clock_is_used_for_publish_bookkeeping():
+    """
+    Every timestamp the controller stamps must come from the clock passed to
+    loop(), not from time.time().
+
+    _set_pump used to stamp _last_publish with the real clock while
+    _check_publish compared it against the injected 'now'. Whenever the two
+    disagreed — the GUI harness's day/night time offset, or the fake clock
+    these tests drive — the gap instantly exceeded publish_interval and every
+    reason change was followed by a spurious second full publish carrying the
+    same pump_reason. On the Pico both clocks are the same value, so this never
+    showed up in production, only in simulation.
+    """
+    now = midday_ts()
+    c = make_controller(now, publish_interval=30)
+    set_temps(flow=20.0, ret=20.0, plate=20.2)
+
+    c.loop(now_ts=now)
+
+    # Stamped from the injected clock, so _check_publish sees no elapsed time.
+    assert c._last_publish == now
+    debug_before = [p for t, p in c.network.mqtt.published if t == "debug"]
+
+    # A reason change publishes exactly once, not twice.
+    c.loop(now_ts=now + 1)
+    debug_after = [p for t, p in c.network.mqtt.published if t == "debug"]
+    assert len(debug_after) - len(debug_before) <= 1
+
+
+def test_published_local_time_follows_injected_clock():
+    """
+    The debug payload's local_time and in_core_hours must describe the clock
+    the decision was made on. publish_state() read time.time() directly, so in
+    the GUI harness's night mode it reported the real hour while the controller
+    was deciding on the simulated one.
+    """
+    now = local_ts(23)                      # simulated night
+    c = make_controller(now)
+    set_temps(flow=20.0, ret=20.0, plate=20.2)
+
+    c.loop(now_ts=now)
+    c.publish_state(force_all=True)
+
+    debug = json.loads([p for t, p in c.network.mqtt.published if t == "debug"][-1])
+    assert debug["local_time"] == "23:00"
+    assert debug["in_core_hours"] is False
+    assert debug["pump_reason"] == "sleep (hour 23)"

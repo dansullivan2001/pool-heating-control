@@ -1,5 +1,5 @@
 # controller/controller.py
-__version__ = "0.9.9"
+__version__ = "0.9.10"
 
 import time
 import json
@@ -44,8 +44,15 @@ class Controller:
         self._pump_on_since = None
         self._skip_logged = False   # one gate-skip record per stagnation period
 
+        # Single clock reference for the whole controller. loop() refreshes it
+        # each cycle from now_ts when one is injected, so every timestamp the
+        # controller stamps or compares comes from the same clock. Mixing
+        # time.time() in here would break the GUI harness's simulated clock and
+        # the fake clock the gate tests drive loop() with.
+        self._now = time.time()
+
         # Initialise test timer to now so we don't immediately test on boot
-        self._reset_test_timer(time.time())
+        self._reset_test_timer(self._now)
         self.state["time_to_next_test"] = self.config.get("pump_test_interval", 600)
 
     # -------------------------------------------------------------------------
@@ -58,6 +65,7 @@ class Controller:
         All logic is non-blocking.
         """
         now = now_ts if now_ts is not None else time.time()
+        self._now = now
 
         # 1. Read local button (if sensors available)
         self._check_local_button(now)
@@ -371,16 +379,16 @@ class Controller:
             self._pump_pin.value(1 if on else 0)
 
         if state_changed:
-            self._pump_on_since = time.time() if on else None
+            self._pump_on_since = self._now if on else None
 
         if state_changed or reason_changed:
             print(f"🔄 Pump {'ON' if on else 'OFF'} — {reason}")
             self.publish_state(force_all=False, urgent=urgent)
-            self._last_publish = time.time()
+            self._last_publish = self._now
 
     def _check_publish(self, now):
         """Periodic full-state publish on interval."""
-        t = time.localtime()
+        t = time.localtime(now)
         start_h = self.config.get("core_start_hour", 8)
         end_h = self.config.get("core_end_hour", 18)
         in_core = start_h <= t[3] < end_h
@@ -401,7 +409,7 @@ class Controller:
             return
 
         feeds = self.network.feeds
-        now = time.time()
+        now = self._now
 
         # Always publish pump state
         self.mqtt.publish(feeds.pump_state, int(self.state["pump_on"]), urgent=urgent)

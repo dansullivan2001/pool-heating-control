@@ -19,9 +19,12 @@ python test_main_controller_gui.py   # Tkinter GUI — simulates all hardware in
 ```bash
 source .venv/bin/activate
 python -m pytest test_sensors.py test_mock_environment.py -v
+python -m pytest test_gate_logic.py test_extract_tests.py -v
 ```
 
-**Deploy to Pico:** Copy all source files (excluding `mocks/`, `typings/`, `.venv/`, test files) to the Pico filesystem using `mpremote` or Thonny. `main.py` runs automatically on boot.
+**Field data:** `python tools/extract_tests.py EXPORT.json` reduces an Adafruit IO debug-feed export to `data/tests.csv` (one row per test decision) and `data/daily.csv`. Share those rather than the raw export. The decision row's `gate_delta` is exact: starting or skipping a test changes `pump_reason`, which publishes in the same loop the gate was evaluated.
+
+**Deploy to Pico:** Copy all source files (excluding `mocks/`, `tools/`, `data/`, `typings/`, `.venv/`, test files) to the Pico filesystem using `mpremote` or Thonny. `main.py` runs automatically on boot.
 
 ## Architecture
 

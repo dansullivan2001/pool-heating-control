@@ -93,6 +93,10 @@ sensors/
 mocks/                   # Desktop mock hardware (used by simulation only)
 typings/                 # MicroPython stub files for IDE type checking (not deployed)
 test_main_controller_gui.py  # Tkinter desktop simulation harness
+
+tools/
+  extract_tests.py       # Reduces a debug-feed export to one row per test (not deployed)
+data/                    # Reducer output; data/raw/ holds exports and is gitignored
 ```
 
 ---
@@ -129,6 +133,8 @@ test_main_controller_gui.py  # Tkinter desktop simulation harness
 Copy all source files to the Pico filesystem. The following should be excluded:
 
 - `mocks/`
+- `tools/`
+- `data/`
 - `typings/`
 - `.venv/` / `venv/`
 - `test_*.py`
@@ -141,6 +147,24 @@ mpremote connect /dev/tty.usbmodem* cp -r controller/ net/ sensors/ :
 ```
 
 `main.py` runs automatically on boot.
+
+---
+
+## Analysing the debug feed
+
+Adafruit IO only exports a feed in full, so the debug feed grows by tens of
+megabytes a season. `tools/extract_tests.py` reduces an export to one row per
+periodic-test decision — the gate value it was decided on and what the test
+turned into — which is all the test-gate tuning needs.
+
+```bash
+python tools/extract_tests.py data/raw/debug-export.json
+```
+
+This writes `data/tests.csv` and `data/daily.csv`. Re-run it on each newer
+export: rows are keyed on the Adafruit record id, so existing rows are updated
+in place and nothing is duplicated. Put raw exports in `data/raw/`, which is
+gitignored.
 
 ---
 

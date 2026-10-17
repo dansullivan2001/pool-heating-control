@@ -1,5 +1,5 @@
 # state.py
-__version__ = "0.3.3"
+__version__ = "0.3.4"
 # Central shared state dictionary for the whole controller.
 # ALL keys used anywhere in the codebase must be declared here with safe defaults.
 # Rule: safety-critical booleans default to the SAFE (restrictive) value.
@@ -10,6 +10,8 @@ state = {
     "pump_reason":          "",     # human-readable reason for current state
     "manual_override":      False,  # timed boost active (button or MQTT mode 1)
     "manual_disabled":      False,  # holiday mode — system stays off (MQTT mode 2)
+    "extended_run":         False,  # pump held on for N hours (MQTT mode 3) — not persisted,
+                                    # so a reboot always ends the run with the pump off
     "test_running":         False,  # true while periodic test run is active
     "last_pump_run":        None,   # timestamp of last pump activation
 

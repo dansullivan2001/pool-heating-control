@@ -1,11 +1,13 @@
 # config.py
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 CONFIG = {
     # --- Pump timing ---
     "pump_test_interval":     600,   # seconds between periodic test runs
     "pump_test_duration":      90,   # seconds each test run lasts
     "manual_override_duration": 90,  # seconds a manual boost lasts
+    "extended_run_default_hours": 1, # MQTT "3" with no duration (e.g. chemical dosing)
+    "extended_run_max_hours":    72, # MQTT "3:N" is clamped to this, so a typo can't run for weeks
 
     # --- Periodic test irradiance gate ---
     # Before a scheduled test, compare the solar plate against the (stagnant)

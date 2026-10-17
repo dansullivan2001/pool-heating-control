@@ -23,13 +23,16 @@ Before any pump decision is made, the following are checked in order. The first 
 
 ### Cloud connectivity
 
-State is published to [Adafruit IO](https://io.adafruit.com) via MQTT every 30 seconds during core hours and every 5 minutes outside them (and immediately on any safety-critical change). The pump is turned off before the watchdog restart so the pool is always left safe. Three control modes are available via the MQTT dashboard:
+State is published to [Adafruit IO](https://io.adafruit.com) via MQTT every 30 seconds during core hours and every 5 minutes outside them (and immediately on any safety-critical change). The pump is turned off before the watchdog restart so the pool is always left safe. Four control modes are available via the MQTT dashboard (`pump_override` feed):
 
 | Mode | Meaning |
 |---|---|
-| `0` | Auto — cancel holiday mode; normal solar logic resumes |
+| `0` | Auto — cancel holiday mode and any extended run; normal solar logic resumes |
 | `1` | Manual boost — runs pump for `manual_override_duration` seconds |
 | `2` | Holiday mode — system stays off until mode `0` is received |
+| `3` / `3:N` | Extended run — pump on for N hours (default 1 h, max 72 h), e.g. `3:6` for end-of-season chemical dosing. Runs day or night and ignores solar gain; send `0` to stop early |
+
+An extended run is still stopped and cancelled by the water-level and enclosure safety checks, and it is not resumed afterwards. A missing flow/return sensor does not stop it. A reboot also ends the run.
 
 ### OTA updates
 

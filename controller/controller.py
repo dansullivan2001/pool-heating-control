@@ -1,5 +1,5 @@
 # controller/controller.py
-__version__ = "0.9.10"
+__version__ = "0.10.0"
 
 import time
 import json
@@ -23,11 +23,12 @@ class Controller:
         Safety chain priority (highest to lowest):
           1. Water level (dry-run protect)
           2. Enclosure temperature (overtemp / sensor missing)
-          3. Flow/Return sensors missing
-          4. Manual boost (timed)
-          5. Core hours / holiday gate
-          6. Solar delta automatic control
-          7. Periodic test run
+          3. Flow/Return sensors missing (skipped during an extended run)
+          4. Extended run (MQTT mode 3, N hours)
+          5. Manual boost (timed)
+          6. Core hours / holiday gate
+          7. Solar delta automatic control
+          8. Periodic test run
         """
         self.network = network
         self.network.mqtt.message_handler = self.handle_mqtt_message
@@ -40,6 +41,8 @@ class Controller:
         # --- Timing ---
         self._last_publish = 0
         self._manual_override_start = None
+        self._extended_run_start = None     # set by loop() on the first tick of a run
+        self._extended_run_duration = 0     # seconds, set by the MQTT handler
         self._test_start_time = None
         self._pump_on_since = None
         self._skip_logged = False   # one gate-skip record per stagnation period
@@ -111,7 +114,8 @@ class Controller:
             return
         try:
             if self.sensors.button.is_pressed():
-                if not self.state["manual_override"]:
+                # An extended run already has the pump on; don't queue a boost behind it.
+                if not self.state["manual_override"] and not self.state["extended_run"]:
                     print("🔘 Button: Boost Triggered")
                     self.state["manual_override"] = True
                     self.state["manual_disabled"] = False
@@ -144,6 +148,7 @@ class Controller:
             self.state["enclosure_sensor_missing"] = False
             self.state["manual_override"] = False  # safety always wins
             self._manual_override_start = None
+            self._cancel_extended_run()
             return True, enclosure_missing
 
         self.state["dry_run_protect"] = False
@@ -158,6 +163,7 @@ class Controller:
             self.state["overtemp_shutdown"] = False
             self.state["manual_override"] = False
             self._manual_override_start = None
+            self._cancel_extended_run()
             return True, True
 
         self.state["enclosure_sensor_missing"] = False
@@ -168,12 +174,15 @@ class Controller:
             self.state["overtemp_shutdown"] = True
             self.state["manual_override"] = False
             self._manual_override_start = None
+            self._cancel_extended_run()
             return True, False
 
         self.state["overtemp_shutdown"] = False
 
         # --- Priority 3: Essential flow/return sensors missing ---
-        if essential_missing:
+        # An extended run doesn't use the flow/return readings, so a flaky
+        # sensor must not interrupt it (e.g. mid-way through chemical dosing).
+        if essential_missing and not self.state["extended_run"]:
             # Not a hard safety stop (enclosure is fine) but we can't make
             # a sensible heating decision. Stop the pump and flag for LED.
             self._set_pump(False, reason="flow/return sensor missing")
@@ -203,6 +212,24 @@ class Controller:
         if self.state["pump_on"] and not self.state["test_running"]:
             self._reset_test_timer(now)
         self.state["time_to_next_test"] = max(0, test_int - (now - self._last_test))
+
+        # --- Extended run (works outside core hours, but not during safety stop) ---
+        if self.state["extended_run"]:
+            if self._extended_run_start is None:
+                self._extended_run_start = now
+                self.state["test_running"] = False
+                self._reset_test_timer(now)
+
+            remaining = self._extended_run_remaining(now)
+            if remaining > 0:
+                mins_left = int((remaining + 59) // 60)  # round up: never shows "0 min left"
+                self._set_pump(True, reason=f"extended run ({mins_left} min left)")
+                return  # skip boost and automatic logic while running
+            else:
+                print("⏱️ Extended run finished")
+                self._cancel_extended_run()
+                # Like a boost ending, the next test is a full interval away.
+                self._reset_test_timer(now)
 
         # --- Manual boost (works outside core hours, but not during safety stop) ---
         if self.state["manual_override"]:
@@ -331,6 +358,18 @@ class Controller:
         self.state["last_test_ts"] = now
         self._skip_logged = False
 
+    def _cancel_extended_run(self):
+        self.state["extended_run"] = False
+        self._extended_run_start = None
+
+    def _extended_run_remaining(self, now):
+        """Seconds left in the extended run (0 when inactive)."""
+        if not self.state["extended_run"]:
+            return 0
+        if self._extended_run_start is None:
+            return self._extended_run_duration  # requested, not yet started
+        return max(0, self._extended_run_duration - (now - self._extended_run_start))
+
     def _test_gate_open(self):
         """
         Irradiance gate for the periodic test. Returns (open: bool, delta).
@@ -451,6 +490,8 @@ class Controller:
             "in_core_hours":            in_core_hours,
             "manual_override":          self.state["manual_override"],
             "manual_disabled":          self.state["manual_disabled"],
+            "extended_run":             self.state["extended_run"],
+            "extended_run_remaining_s": int(self._extended_run_remaining(now)),
             "test_running":             self.state["test_running"],
             "time_to_next_test":        int(self.state["time_to_next_test"]),
             "water_level_ok":           self.state["water_level_ok"],
@@ -470,19 +511,39 @@ class Controller:
         Handle incoming MQTT commands from Adafruit IO dashboard.
 
         Mode values:
-          0 = Auto (cancel holiday mode; boost timer is unaffected)
-          1 = Manual boost (timed, one-shot)
-          2 = Holiday mode (system stays off until mode 0 received)
+          0   = Auto (cancel holiday mode and any extended run; boost timer is unaffected)
+          1   = Manual boost (timed, one-shot)
+          2   = Holiday mode (system stays off until mode 0 received)
+          3   = Extended run for extended_run_default_hours
+          3:N = Extended run for N hours (float, clamped to extended_run_max_hours)
         """
         feeds = self.network.feeds
 
         if topic == feeds.manual_override:
             try:
-                mode = int(payload)
+                mode_str, _, arg = payload.strip().partition(":")
+                mode = int(mode_str)
 
-                if mode == 1:
-                    # Boost: only trigger if not already boosting (prevents timer reset spam)
-                    if not self.state["manual_override"]:
+                if mode == 3:
+                    hours = float(arg if arg.strip() else self.config.get("extended_run_default_hours", 1))
+                    if not hours > 0:   # also rejects nan
+                        raise ValueError("duration must be positive")
+                    hours = min(hours, self.config.get("extended_run_max_hours", 72))
+                    print(f"🧪 MQTT: Extended run for {hours:g} h")
+                    # Re-sending restarts the run with the new duration. No "0" is
+                    # echoed back to the feed as for boost — it would arrive as a
+                    # mode-0 message and cancel the run straight away.
+                    self.state["extended_run"] = True
+                    self.state["manual_disabled"] = False
+                    self.state["manual_override"] = False
+                    self._manual_override_start = None
+                    self._extended_run_duration = hours * 3600
+                    self._extended_run_start = None  # will be set on next loop
+
+                elif mode == 1:
+                    # Boost: only trigger if not already boosting (prevents timer reset spam).
+                    # Ignored during an extended run, which already has the pump on.
+                    if not self.state["manual_override"] and not self.state["extended_run"]:
                         print("🚀 MQTT: Boost triggered")
                         self.state["manual_override"] = True
                         self.state["manual_disabled"] = False
@@ -495,12 +556,17 @@ class Controller:
                     self.state["manual_disabled"] = True
                     self.state["manual_override"] = False  # cancel any active boost
                     self._manual_override_start = None
+                    self._cancel_extended_run()
 
                 elif mode == 0:
-                    # Cancel holiday only. The boost timer manages itself.
+                    # Cancel holiday and extended run. The boost timer manages itself.
                     if self.state["manual_disabled"]:
                         print("🤖 MQTT: Returning to auto from holiday")
                         self.state["manual_disabled"] = False
+                    if self.state["extended_run"]:
+                        print("⏹️ MQTT: Extended run cancelled")
+                        self._cancel_extended_run()
+                        self._reset_test_timer(self._now)
 
                 self.state["pump_reason"] = f"AIO mode change: {mode}"
 

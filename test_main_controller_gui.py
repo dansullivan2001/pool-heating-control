@@ -1,5 +1,5 @@
 # test_main_controller_gui.py
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 """
 Desktop simulation harness for the pool controller.
@@ -164,6 +164,7 @@ def _soft_restart():
     controller._last_test             = now
     controller._last_tick             = None
     controller._manual_override_start = None
+    controller._extended_run_start    = None
     controller._test_start_time       = None
     state["last_test_ts"]             = now
 
